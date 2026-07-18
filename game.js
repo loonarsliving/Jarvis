@@ -879,19 +879,24 @@ window.addEventListener("keydown", (e) => { keys[e.key.toLowerCase()] = true; })
 window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
 
 let cameraYaw = 0, cameraPitch = 0.35, cameraDist = 9;
-let controlMode = "touch"; // "touch" | "gyro"
+let controlMode = "touch"; // "touch" | "gyro" — swipe/drag works in both modes as a manual nudge
 
-// -------- touch/mouse drag camera (fallback / manual mode) --------
-let dragging = false, lastPX = 0, lastPY = 0;
-renderer.domElement.addEventListener("pointerdown", (e) => { dragging = true; lastPX = e.clientX; lastPY = e.clientY; });
+// -------- manual look nudge (mouse/touch drag) — always active, on top of gyro if enabled --------
+let manualYawOffset = 0, manualPitchOffset = 0;
+let dragging = false, dragPointerId = null, lastPX = 0, lastPY = 0;
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  dragging = true; dragPointerId = e.pointerId; lastPX = e.clientX; lastPY = e.clientY;
+});
 window.addEventListener("pointermove", (e) => {
-  if (!dragging || controlMode !== "touch") return;
+  if (!dragging || e.pointerId !== dragPointerId) return;
   const dx = e.clientX - lastPX, dy = e.clientY - lastPY;
-  cameraYaw -= dx * 0.006;
-  cameraPitch = Math.min(0.95, Math.max(-0.2, cameraPitch - dy * 0.004));
+  manualYawOffset -= dx * 0.006;
+  manualPitchOffset -= dy * 0.004;
   lastPX = e.clientX; lastPY = e.clientY;
 });
-window.addEventListener("pointerup", () => { dragging = false; });
+function endDrag(e) { if (e.pointerId === dragPointerId) { dragging = false; dragPointerId = null; } }
+window.addEventListener("pointerup", endDrag);
+window.addEventListener("pointercancel", endDrag);
 renderer.domElement.addEventListener("wheel", (e) => {
   cameraDist = Math.min(16, Math.max(4, cameraDist + e.deltaY * 0.01));
 }, { passive: true });
@@ -901,7 +906,7 @@ const GYRO_SENSITIVITY = 1.7; // gain: how far the camera swings per degree of t
 const GYRO_SMOOTH = 16; // higher = snappier, lower = smoother/laggier
 let gyroBaseline = null; // { rawYaw, rawPitch, camYaw, camPitch }
 let gyroTargetYaw = 0, gyroTargetPitch = 0.35;
-let gyroLastEventAt = 0;
+let gyroSmoothYaw = 0, gyroSmoothPitch = 0.35;
 
 function gyroReading(e) {
   const angle = (screen.orientation && typeof screen.orientation.angle === "number")
@@ -917,9 +922,8 @@ function gyroReading(e) {
 function handleOrientationEvent(e) {
   if (controlMode !== "gyro") return;
   if (e.beta == null && e.gamma == null) return;
-  gyroLastEventAt = performance.now();
   const { rawYaw, rawPitch } = gyroReading(e);
-  if (!gyroBaseline) { gyroBaseline = { rawYaw, rawPitch, camYaw: cameraYaw, camPitch: cameraPitch }; return; }
+  if (!gyroBaseline) { gyroBaseline = { rawYaw, rawPitch, camYaw: gyroSmoothYaw, camPitch: gyroSmoothPitch }; return; }
   const dYaw = (rawYaw - gyroBaseline.rawYaw) * (Math.PI / 180) * GYRO_SENSITIVITY;
   const dPitch = (rawPitch - gyroBaseline.rawPitch) * (Math.PI / 180) * GYRO_SENSITIVITY;
   gyroTargetYaw = gyroBaseline.camYaw - dYaw;
@@ -928,7 +932,7 @@ function handleOrientationEvent(e) {
 window.addEventListener("deviceorientation", handleOrientationEvent);
 window.addEventListener("deviceorientationabsolute", handleOrientationEvent);
 
-function recalibrateGyro() { gyroBaseline = null; }
+function recalibrateGyro() { gyroBaseline = null; manualYawOffset = 0; manualPitchOffset = 0; }
 
 async function tryEnableGyro() {
   try {
@@ -960,11 +964,16 @@ function updateControlModeUI() {
 // Joystick
 const joyBase = $("joystick-base"), joyKnob = $("joystick-knob");
 let joyActive = false, joyVec = { x: 0, y: 0 }, joyId = null;
+function resetJoystick() {
+  joyActive = false; joyId = null; joyVec.x = 0; joyVec.y = 0;
+  joyKnob.style.transform = "translate(-50%, -50%)";
+}
 joyBase.addEventListener("pointerdown", (e) => {
   joyActive = true; joyId = e.pointerId;
+  joyBase.setPointerCapture(e.pointerId);
   e.stopPropagation();
 });
-window.addEventListener("pointermove", (e) => {
+joyBase.addEventListener("pointermove", (e) => {
   if (!joyActive || e.pointerId !== joyId) return;
   const rect = joyBase.getBoundingClientRect();
   const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
@@ -975,11 +984,10 @@ window.addEventListener("pointermove", (e) => {
   joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
   joyVec.x = dx / max; joyVec.y = dy / max;
 });
-window.addEventListener("pointerup", (e) => {
-  if (e.pointerId !== joyId) return;
-  joyActive = false; joyVec.x = 0; joyVec.y = 0;
-  joyKnob.style.transform = "translate(-50%, -50%)";
-});
+joyBase.addEventListener("pointerup", (e) => { if (e.pointerId === joyId) resetJoystick(); });
+joyBase.addEventListener("pointercancel", (e) => { if (e.pointerId === joyId) resetJoystick(); });
+window.addEventListener("blur", resetJoystick);
+document.addEventListener("visibilitychange", () => { if (document.hidden) resetJoystick(); });
 
 let jumpPressed = false;
 $("jump-btn").addEventListener("click", () => { jumpPressed = true; });
@@ -1288,13 +1296,18 @@ function animate() {
   if (!startScreen.classList.contains("hidden")) { renderer.render(scene, camera); return; }
   if (endScreen && !endScreen.classList.contains("hidden")) { renderer.render(scene, camera); return; }
 
-  // -------- gyro smoothing --------
+  // -------- camera orientation: gyro (smoothed) + manual swipe nudge on top --------
   if (controlMode === "gyro" && gyroBaseline) {
     const smooth = Math.min(1, dt * GYRO_SMOOTH);
-    let diffYaw = gyroTargetYaw - cameraYaw;
+    let diffYaw = gyroTargetYaw - gyroSmoothYaw;
     diffYaw = Math.atan2(Math.sin(diffYaw), Math.cos(diffYaw));
-    cameraYaw += diffYaw * smooth;
-    cameraPitch += (gyroTargetPitch - cameraPitch) * smooth;
+    gyroSmoothYaw += diffYaw * smooth;
+    gyroSmoothPitch += (gyroTargetPitch - gyroSmoothPitch) * smooth;
+    cameraYaw = gyroSmoothYaw + manualYawOffset;
+    cameraPitch = Math.min(1.15, Math.max(-0.4, gyroSmoothPitch + manualPitchOffset));
+  } else {
+    cameraYaw = manualYawOffset;
+    cameraPitch = Math.min(1.15, Math.max(-0.4, 0.35 + manualPitchOffset));
   }
 
   // -------- movement input --------
