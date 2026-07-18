@@ -715,10 +715,13 @@ window.addEventListener("keydown", (e) => { keys[e.key.toLowerCase()] = true; })
 window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
 
 let cameraYaw = 0, cameraPitch = 0.35, cameraDist = 9;
+let controlMode = "touch"; // "touch" | "gyro"
+
+// -------- touch/mouse drag camera (fallback / manual mode) --------
 let dragging = false, lastPX = 0, lastPY = 0;
 renderer.domElement.addEventListener("pointerdown", (e) => { dragging = true; lastPX = e.clientX; lastPY = e.clientY; });
 window.addEventListener("pointermove", (e) => {
-  if (!dragging) return;
+  if (!dragging || controlMode !== "touch") return;
   const dx = e.clientX - lastPX, dy = e.clientY - lastPY;
   cameraYaw -= dx * 0.006;
   cameraPitch = Math.min(0.95, Math.max(-0.2, cameraPitch - dy * 0.004));
@@ -728,6 +731,58 @@ window.addEventListener("pointerup", () => { dragging = false; });
 renderer.domElement.addEventListener("wheel", (e) => {
   cameraDist = Math.min(16, Math.max(4, cameraDist + e.deltaY * 0.01));
 }, { passive: true });
+
+// -------- gyroscope camera (default on devices that support it) --------
+let gyroBaseline = null; // { rawYaw, rawPitch, camYaw, camPitch }
+
+function gyroReading(e) {
+  const angle = (screen.orientation && typeof screen.orientation.angle === "number") ? screen.orientation.angle : 90;
+  const beta = e.beta || 0, gamma = e.gamma || 0;
+  let rawYaw, rawPitch;
+  if (angle === 90) { rawYaw = gamma; rawPitch = beta; }
+  else if (angle === -90 || angle === 270) { rawYaw = -gamma; rawPitch = -beta; }
+  else { rawYaw = -beta; rawPitch = gamma; }
+  return { rawYaw, rawPitch };
+}
+function onDeviceOrientation(e) {
+  if (controlMode !== "gyro") return;
+  const { rawYaw, rawPitch } = gyroReading(e);
+  if (!gyroBaseline) { gyroBaseline = { rawYaw, rawPitch, camYaw: cameraYaw, camPitch: cameraPitch }; return; }
+  const dYaw = (rawYaw - gyroBaseline.rawYaw) * (Math.PI / 180);
+  const dPitch = (rawPitch - gyroBaseline.rawPitch) * (Math.PI / 180);
+  cameraYaw = gyroBaseline.camYaw - dYaw;
+  cameraPitch = Math.min(0.95, Math.max(-0.2, gyroBaseline.camPitch + dPitch));
+}
+window.addEventListener("deviceorientation", onDeviceOrientation);
+
+function recalibrateGyro() { gyroBaseline = null; }
+
+async function tryEnableGyro() {
+  try {
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+      const perm = await DeviceOrientationEvent.requestPermission();
+      if (perm !== "granted") return false;
+    } else if (typeof DeviceOrientationEvent === "undefined") {
+      return false;
+    }
+    controlMode = "gyro";
+    gyroBaseline = null;
+    updateControlModeUI();
+    setTimeout(() => {
+      if (controlMode === "gyro" && !gyroBaseline) setTouchMode();
+    }, 1500);
+    return true;
+  } catch (e) { return false; }
+}
+function setTouchMode() {
+  controlMode = "touch";
+  updateControlModeUI();
+}
+function updateControlModeUI() {
+  const modeBtn = $("control-mode-btn"), calBtn = $("calibrate-btn");
+  if (modeBtn) modeBtn.textContent = controlMode === "gyro" ? "🧭" : "🖐️";
+  if (calBtn) calBtn.classList.toggle("hidden", controlMode !== "gyro");
+}
 
 // Joystick
 const joyBase = $("joystick-base"), joyKnob = $("joystick-knob");
@@ -761,6 +816,13 @@ $("mute-btn").addEventListener("click", () => {
   muted = !muted;
   $("mute-btn").textContent = muted ? "🔇" : "🔊";
 });
+
+$("control-mode-btn").addEventListener("click", async () => {
+  if (controlMode === "gyro") setTouchMode();
+  else await tryEnableGyro();
+});
+$("calibrate-btn").addEventListener("click", recalibrateGyro);
+updateControlModeUI();
 
 // =================================================================
 // Dialogue
@@ -1180,7 +1242,9 @@ document.querySelectorAll(".char-option").forEach((btn) => {
 
 $("start-btn").addEventListener("click", () => {
   const name = ($("player-name").value || "Petualang").trim().slice(0, 20) || "Petualang";
-  startNewGame(name, selectedCharacter);
+  const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  if (isTouch) tryEnableGyro().finally(() => startNewGame(name, selectedCharacter));
+  else startNewGame(name, selectedCharacter);
 });
 $("player-name").addEventListener("keydown", (e) => { if (e.key === "Enter") $("start-btn").click(); });
 $("replay-btn").addEventListener("click", () => {
