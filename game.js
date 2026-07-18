@@ -961,31 +961,35 @@ function updateControlModeUI() {
   if (calBtn) calBtn.classList.toggle("hidden", controlMode !== "gyro");
 }
 
-// Joystick
-const joyBase = $("joystick-base"), joyKnob = $("joystick-knob");
-let joyActive = false, joyVec = { x: 0, y: 0 }, joyId = null;
+// Roblox-style floating joystick: the stick appears wherever you first touch
+// down inside the left-half move zone, instead of sitting at a fixed spot.
+const joyZone = $("joystick-zone"), joyBase = $("joystick-base"), joyKnob = $("joystick-knob");
+const JOY_RADIUS = 60;
+let joyActive = false, joyVec = { x: 0, y: 0 }, joyId = null, joyCenterX = 0, joyCenterY = 0;
 function resetJoystick() {
   joyActive = false; joyId = null; joyVec.x = 0; joyVec.y = 0;
+  joyBase.classList.remove("active");
   joyKnob.style.transform = "translate(-50%, -50%)";
 }
-joyBase.addEventListener("pointerdown", (e) => {
+joyZone.addEventListener("pointerdown", (e) => {
   joyActive = true; joyId = e.pointerId;
-  joyBase.setPointerCapture(e.pointerId);
-  e.stopPropagation();
+  joyCenterX = e.clientX; joyCenterY = e.clientY;
+  joyBase.style.left = joyCenterX + "px";
+  joyBase.style.top = joyCenterY + "px";
+  joyBase.classList.add("active");
+  joyKnob.style.transform = "translate(-50%, -50%)";
+  joyZone.setPointerCapture(e.pointerId);
 });
-joyBase.addEventListener("pointermove", (e) => {
+joyZone.addEventListener("pointermove", (e) => {
   if (!joyActive || e.pointerId !== joyId) return;
-  const rect = joyBase.getBoundingClientRect();
-  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-  let dx = e.clientX - cx, dy = e.clientY - cy;
-  const max = rect.width / 2;
+  let dx = e.clientX - joyCenterX, dy = e.clientY - joyCenterY;
   const len = Math.hypot(dx, dy);
-  if (len > max) { dx = (dx / len) * max; dy = (dy / len) * max; }
+  if (len > JOY_RADIUS) { dx = (dx / len) * JOY_RADIUS; dy = (dy / len) * JOY_RADIUS; }
   joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-  joyVec.x = dx / max; joyVec.y = dy / max;
+  joyVec.x = dx / JOY_RADIUS; joyVec.y = dy / JOY_RADIUS;
 });
-joyBase.addEventListener("pointerup", (e) => { if (e.pointerId === joyId) resetJoystick(); });
-joyBase.addEventListener("pointercancel", (e) => { if (e.pointerId === joyId) resetJoystick(); });
+joyZone.addEventListener("pointerup", (e) => { if (e.pointerId === joyId) resetJoystick(); });
+joyZone.addEventListener("pointercancel", (e) => { if (e.pointerId === joyId) resetJoystick(); });
 window.addEventListener("blur", resetJoystick);
 document.addEventListener("visibilitychange", () => { if (document.hidden) resetJoystick(); });
 

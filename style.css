@@ -298,20 +298,34 @@ button.secondary { background: rgba(255,255,255,0.12); box-shadow: 0 6px 0 rgba(
   z-index: 15;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0.9rem 1.1rem 1.2rem;
   pointer-events: none;
 }
-#joystick-zone, #right-controls { pointer-events: auto; }
+#right-controls { pointer-events: auto; }
 
+/* Roblox-style floating joystick: left half of the screen is the move zone,
+   the stick itself only appears where you actually touch down. The right
+   half (outside this zone) stays free for the camera drag-to-look. */
+#joystick-zone {
+  position: absolute;
+  inset: 0 50% 0 0;
+  z-index: 12;
+  touch-action: none;
+}
 #joystick-base {
+  position: absolute;
+  left: 0; top: 0;
   width: 120px; height: 120px;
   border-radius: 50%;
   background: rgba(255,255,255,0.12);
   border: 2px solid rgba(255,255,255,0.3);
-  position: relative;
-  touch-action: none;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
+#joystick-base.active { opacity: 1; }
 #joystick-knob {
   width: 52px; height: 52px;
   border-radius: 50%;
