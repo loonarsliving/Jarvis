@@ -13,17 +13,22 @@ const ZONES = {
   FOREST_END: -195,
   RAMP_END: -320,
   MOUNTAIN_END: -400,
+  LAIR_END: -460,
 };
 const MOUNTAIN_Y = 15;
+const STAGE_NAMES = ["Desa Damai", "Hutan Bisikan", "Gua Kunang-Kunang", "Puncak Awan", "Sarang Naga"];
 
-function zoneName(z) {
-  if (z > ZONES.VILLAGE_END) return "Desa Damai";
-  if (z > ZONES.FOREST_END) return "Hutan Bisikan";
-  if (z > ZONES.RAMP_END) return "Gua Kunang-Kunang";
-  return "Puncak Awan";
+function stageOfZ(z) {
+  if (z > ZONES.VILLAGE_END) return 1;
+  if (z > ZONES.FOREST_END) return 2;
+  if (z > ZONES.RAMP_END) return 3;
+  if (z > ZONES.MOUNTAIN_END) return 4;
+  return 5;
 }
+function zoneName(z) { return STAGE_NAMES[stageOfZ(z) - 1]; }
 function laneHalfWidth(z) {
   if (z <= ZONES.FOREST_END && z > ZONES.RAMP_END) return 8; // cave + ramp corridor
+  if (z <= ZONES.MOUNTAIN_END) return 22; // dragon's lair arena
   return 45;
 }
 function groundHeightAt(z) {
@@ -46,6 +51,9 @@ const toastEl = $("toast"), promptEl = $("interact-prompt");
 const areaNameEl = $("area-name"), crystalCountEl = $("crystal-count"), timerEl = $("timer");
 const puzzleOverlay = $("puzzle-overlay"), puzzleStatus = $("puzzle-status");
 const hpFillEl = $("hp-fill"), dmgFlashEl = $("dmg-flash"), attackBtn = $("attack-btn");
+const manaFillEl = $("mana-fill");
+const stageOverlayEl = $("stage-overlay"), stageOverlayTitle = $("stage-overlay-title"), stageOverlaySub = $("stage-overlay-sub");
+const bossBarEl = $("boss-bar"), bossHpFillEl = $("boss-hp-fill");
 
 // =================================================================
 // Sound
@@ -76,26 +84,51 @@ function showToast(msg) {
 // Three.js scene setup
 // =================================================================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#8ec9ff");
-scene.fog = new THREE.Fog("#8ec9ff", 40, 130);
+scene.fog = new THREE.Fog("#a9d8ff", 45, 140);
 
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 canvasWrap.appendChild(renderer.domElement);
 
-const hemi = new THREE.HemisphereLight("#bfe3ff", "#5fb84e", 0.9);
+// -------- gradient sky dome (nicer atmosphere than a flat color) --------
+function makeSkyDome() {
+  const geo = new THREE.SphereGeometry(190, 24, 16);
+  const uniforms = {
+    top: { value: new THREE.Color("#3a7bd5") },
+    bottom: { value: new THREE.Color("#dceeff") },
+  };
+  const mat = new THREE.ShaderMaterial({
+    uniforms, side: THREE.BackSide, fog: false, depthWrite: false,
+    vertexShader: `varying vec3 vPos; void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      varying vec3 vPos; uniform vec3 top; uniform vec3 bottom;
+      void main() {
+        float h = clamp(normalize(vPos).y * 0.5 + 0.5, 0.0, 1.0);
+        gl_FragColor = vec4(mix(bottom, top, pow(h, 0.6)), 1.0);
+      }`,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+scene.add(makeSkyDome());
+
+const hemi = new THREE.HemisphereLight("#bfe3ff", "#5fb84e", 1.0);
 scene.add(hemi);
-const sun = new THREE.DirectionalLight("#fff6d8", 1.1);
+const sun = new THREE.DirectionalLight("#fff6d8", 1.25);
 sun.position.set(30, 45, 20);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -60; sun.shadow.camera.right = 60;
 sun.shadow.camera.top = 60; sun.shadow.camera.bottom = -60;
 sun.shadow.camera.far = 150;
+sun.shadow.bias = -0.0015;
 scene.add(sun);
-scene.add(new THREE.AmbientLight("#ffffff", 0.25));
+const fill = new THREE.DirectionalLight("#bcd6ff", 0.35);
+fill.position.set(-25, 20, -30);
+scene.add(fill);
+scene.add(new THREE.AmbientLight("#ffffff", 0.22));
 
 function updateOrientation() {
   const portrait = window.innerHeight > window.innerWidth;
@@ -227,6 +260,7 @@ function buildHumanoid({
 
   g.scale.setScalar(scale);
   g.userData.parts = { torso, head, armL, armR, legL, legR };
+  g.userData.baseScale = scale;
   return g;
 }
 
@@ -282,10 +316,46 @@ function buildDragon() {
 // =================================================================
 const obstacles = []; // {x,z,radius}
 
-function groundSlab(x1, x2, z1, z2, y, color) {
+// -------- procedural ground textures (canvas-based, no external assets) --------
+function makeGroundTexture(base, speckle, speckleCount = 900) {
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < speckleCount; i++) {
+    ctx.fillStyle = speckle[Math.floor(Math.random() * speckle.length)];
+    const x = Math.random() * size, y = Math.random() * size, r = 0.6 + Math.random() * 1.8;
+    ctx.globalAlpha = 0.25 + Math.random() * 0.4;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+const GROUND_TEXTURES = {
+  grass: makeGroundTexture("#7ec850", ["#6bb443", "#8fd968", "#5fa53a"]),
+  forest: makeGroundTexture("#3f8a4f", ["#347539", "#4a9d5c", "#2c5f30"]),
+  cave: makeGroundTexture("#382048", ["#2c1839", "#442858", "#20122e"]),
+  snow: makeGroundTexture("#e7f3fa", ["#ffffff", "#d6e9f2", "#c9e0ee"]),
+  lair: makeGroundTexture("#241030", ["#3a1840", "#180820", "#4a2050"]),
+};
+
+function groundSlab(x1, x2, z1, z2, y, color, textureKey) {
   const w = x2 - x1, d = z1 - z2;
   const geo = new THREE.BoxGeometry(w, 1, d);
-  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.95 }));
+  const matOpts = { color, roughness: 0.95 };
+  if (textureKey && GROUND_TEXTURES[textureKey]) {
+    const tex = GROUND_TEXTURES[textureKey].clone();
+    tex.needsUpdate = true;
+    tex.repeat.set(w / 6, d / 6);
+    matOpts.map = tex;
+    matOpts.color = "#ffffff";
+  }
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial(matOpts));
   mesh.position.set((x1 + x2) / 2, y - 0.5, (z1 + z2) / 2);
   mesh.receiveShadow = true;
   scene.add(mesh);
@@ -323,14 +393,14 @@ function house(x, z, color) {
 }
 
 // Village
-groundSlab(-45, 45, 8, ZONES.VILLAGE_END, 0, "#7ec850");
+groundSlab(-45, 45, 8, ZONES.VILLAGE_END, 0, "#7ec850", "grass");
 house(-16, -12, "#e0b26b");
 house(16, -18, "#d68e5b");
 tree(-30, -5); tree(30, -8); tree(-28, -40); tree(28, -45); tree(-5, -55); tree(20, -60);
 rock(35, -20); rock(-38, -30);
 
 // Forest
-groundSlab(-45, 45, ZONES.VILLAGE_END, ZONES.FOREST_END, 0, "#3f8a4f");
+groundSlab(-45, 45, ZONES.VILLAGE_END, ZONES.FOREST_END, 0, "#3f8a4f", "forest");
 for (let i = 0; i < 22; i++) {
   const x = (Math.random() - 0.5) * 80;
   const z = ZONES.VILLAGE_END - 8 - Math.random() * 82;
@@ -340,7 +410,7 @@ for (let i = 0; i < 22; i++) {
 rock(-6, -140, 1.3); rock(7, -175, 1.1);
 
 // Cave (corridor)
-groundSlab(-9, 9, ZONES.FOREST_END, ZONES.RAMP_END, 0, "#382048");
+groundSlab(-9, 9, ZONES.FOREST_END, ZONES.RAMP_END, 0, "#382048", "cave");
 const caveWallMat = new THREE.MeshStandardMaterial({ color: "#241531", roughness: 1 });
 [-9, 9].forEach((x) => {
   const wall = new THREE.Mesh(new THREE.BoxGeometry(1, 24, ZONES.FOREST_END - ZONES.RAMP_END), caveWallMat);
@@ -367,11 +437,28 @@ ramp.receiveShadow = true;
 scene.add(ramp);
 
 // Mountain plateau
-groundSlab(-45, 45, ZONES.RAMP_END, ZONES.MOUNTAIN_END, MOUNTAIN_Y, "#e7f3fa");
+groundSlab(-45, 45, ZONES.RAMP_END, ZONES.MOUNTAIN_END, MOUNTAIN_Y, "#e7f3fa", "snow");
 for (let i = 0; i < 10; i++) {
   const x = (Math.random() - 0.5) * 70;
   const z = ZONES.RAMP_END - 10 - Math.random() * 80;
   rock(x, z, 0.8 + Math.random() * 0.6);
+}
+
+// Dragon's Lair (stage 5 boss arena)
+groundSlab(-22, 22, ZONES.MOUNTAIN_END, ZONES.LAIR_END, MOUNTAIN_Y, "#241030", "lair");
+const lairGlowMat = new THREE.MeshStandardMaterial({ color: "#ff6b6b", emissive: "#ff3d3d", emissiveIntensity: 0.5, roughness: 0.4 });
+for (let i = 0; i < 5; i++) {
+  const ang = (i / 5) * Math.PI * 2;
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.2, 6, 8), new THREE.MeshStandardMaterial({ color: "#3a2050", roughness: 0.8 }));
+  pillar.position.set(Math.cos(ang) * 18, MOUNTAIN_Y + 3, (ZONES.MOUNTAIN_END + ZONES.LAIR_END) / 2 + Math.sin(ang) * 18);
+  pillar.castShadow = true;
+  scene.add(pillar);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1, 8), lairGlowMat);
+  flame.position.set(pillar.position.x, MOUNTAIN_Y + 6.5, pillar.position.z);
+  scene.add(flame);
+  const flameLight = new THREE.PointLight("#ff6b4a", 1, 12);
+  flameLight.position.copy(flame.position);
+  scene.add(flameLight);
 }
 
 // =================================================================
@@ -395,13 +482,24 @@ const crystals = [
 ];
 let crystal3 = null;
 
-// Torch / key pickups
-function makeGlow(color, x, z, y) {
-  const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6 }));
+// -------- energy orbs (light pickups that refill mana) --------
+const energyOrbGeo = new THREE.SphereGeometry(0.35, 12, 12);
+function makeEnergyOrb(x, z, y = 1.4) {
+  const mat = new THREE.MeshStandardMaterial({ color: "#fff6c9", emissive: "#ffe066", emissiveIntensity: 1.1, roughness: 0.15 });
+  const mesh = new THREE.Mesh(energyOrbGeo, mat);
   mesh.position.set(x, y, z);
   scene.add(mesh);
-  return mesh;
+  const light = new THREE.PointLight("#ffe066", 1.3, 5);
+  mesh.add(light);
+  return { x, z, mesh, baseY: y, collected: false, respawnAt: 0 };
 }
+const energyOrbs = [
+  makeEnergyOrb(6, -40), makeEnergyOrb(-6, -70),
+  makeEnergyOrb(14, -130), makeEnergyOrb(-16, -165),
+  makeEnergyOrb(4, -215), makeEnergyOrb(-6, -250),
+  makeEnergyOrb(6, -300, MOUNTAIN_Y + 1.4), makeEnergyOrb(-6, -340, MOUNTAIN_Y + 1.4),
+  makeEnergyOrb(8, -410, MOUNTAIN_Y + 1.4), makeEnergyOrb(-8, -440, MOUNTAIN_Y + 1.4),
+];
 
 // =================================================================
 // NPCs
@@ -478,16 +576,6 @@ addNpc({
   },
 });
 
-addNpc({
-  id: "naga", name: "Naga Penjaga", x: 0, z: -370, radius: 6,
-  build: () => buildDragon(),
-  getLines(s) {
-    if (s.crystalCount < 3) return ["Kembalilah setelah kau kumpulkan ketiga Kristal Ajaib!"];
-    return ["Luar biasa! Kau berhasil menyelamatkan desa kita!"];
-  },
-  onComplete(s) { if (s.crystalCount >= 3) endGame(); },
-});
-
 // Puzzle altar
 const altar = { x: 0, z: -350, radius: 5, flag: "puzzleSolved" };
 const altarMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.6, 1, 8), new THREE.MeshStandardMaterial({ color: "#cfcfe0" }));
@@ -499,17 +587,33 @@ altarGem.position.set(altar.x, MOUNTAIN_Y + 1.6, altar.z);
 scene.add(altarGem);
 
 // Gate barrier visuals
-function makeBarrier(z) {
+function makeBarrier(z, y = null) {
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(16, 8),
     new THREE.MeshBasicMaterial({ color: "#ff4a4a", transparent: true, opacity: 0.35, side: THREE.DoubleSide })
   );
-  mesh.position.set(0, groundHeightAt(z) + 4, z);
+  mesh.position.set(0, (y ?? groundHeightAt(z)) + 4, z);
   scene.add(mesh);
   return mesh;
 }
+const stage1Barrier = makeBarrier(ZONES.VILLAGE_END - 1);
 const caveBarrier = makeBarrier(ZONES.FOREST_END - 1);
 const mountainBarrier = makeBarrier(ZONES.RAMP_END + 1);
+const lairBarrier = makeBarrier(ZONES.MOUNTAIN_END - 1, MOUNTAIN_Y);
+
+// =================================================================
+// Boss: Naga Penjaga (stage 5)
+// =================================================================
+const boss = {
+  name: "Naga Penjaga", x: 0, z: -430, hp: 220, maxHp: 220, alive: true,
+  mesh: buildDragon(), lastAttackTime: 0, introShown: false,
+};
+boss.mesh.position.set(boss.x, MOUNTAIN_Y, boss.z);
+scene.add(boss.mesh);
+const bossTag = makeNameSprite(boss.name);
+bossTag.position.set(0, 4.4, 0);
+boss.mesh.add(bossTag);
+const BOSS_ATTACK_RANGE = 5, BOSS_DAMAGE = 18, BOSS_ATTACK_COOLDOWN = 1800;
 
 // =================================================================
 // Monsters
@@ -550,9 +654,16 @@ addMonster("m4", -3, -272, "#8a4fd6");
 addMonster("m5", -10, -345, "#7fd6e8");
 addMonster("m6", 10, -385, "#7fd6e8");
 
-const ATTACK_RANGE = 2.6, ENGAGE_RANGE = 7, ATTACK_DAMAGE = 15, MONSTER_DAMAGE = 12;
-const ATTACK_COOLDOWN = 450, MONSTER_ATTACK_COOLDOWN = 1400, INVULN_TIME = 900;
+const ATTACK_RANGE = 3, ENGAGE_RANGE = 7, ATTACK_DAMAGE = 22, MONSTER_DAMAGE = 12;
+const ATTACK_COOLDOWN = 650, MONSTER_ATTACK_COOLDOWN = 1400, INVULN_TIME = 900;
+const SPELL_MANA_COST = 20;
 let monsterTarget = null;
+
+const SPELL_DEFS = {
+  ayah: { name: "Bola Api", color: "#ff7a3d", glow: "#ffb84a", sound: 180 },
+  putri: { name: "Sihir Bintang", color: "#ff8fd0", glow: "#c084ff", sound: 520 },
+  bayi: { name: "Gelembung Ajaib", color: "#8fd6ff", glow: "#c6f0ff", sound: 700 },
+};
 
 function flashDamage() {
   dmgFlashEl.classList.add("show");
@@ -566,18 +677,60 @@ function respawnPlayer() {
   if (state.z > ZONES.VILLAGE_END) { state.x = 0; state.z = 5; }
   else if (state.z > ZONES.FOREST_END) { state.x = 0; state.z = ZONES.VILLAGE_END + 5; }
   else if (state.z > ZONES.RAMP_END) { state.x = 0; state.z = ZONES.FOREST_END + 5; }
-  else { state.x = 0; state.z = ZONES.RAMP_END - 15; }
+  else if (state.z > ZONES.MOUNTAIN_END) { state.x = 0; state.z = ZONES.RAMP_END - 15; }
+  else { state.x = 0; state.z = ZONES.MOUNTAIN_END - 15; }
   state.y = groundHeightAt(state.z);
   state.velY = 0;
   updateHpBar();
   saveGame();
 }
 
-function performAttack() {
+// -------- spell particle bursts (per-character visuals) --------
+function spawnSpellBurst(x, y, z, def) {
+  const group = new THREE.Group();
+  group.position.set(x, y, z);
+  scene.add(group);
+  const light = new THREE.PointLight(def.glow, 2.5, 8);
+  group.add(light);
+  const bits = [];
+  for (let i = 0; i < 10; i++) {
+    const geo = Math.random() < 0.5 ? new THREE.SphereGeometry(0.14, 6, 6) : new THREE.OctahedronGeometry(0.14);
+    const mat = new THREE.MeshStandardMaterial({ color: def.color, emissive: def.glow, emissiveIntensity: 1 });
+    const bit = new THREE.Mesh(geo, mat);
+    const ang = Math.random() * Math.PI * 2, speed = 2 + Math.random() * 3;
+    bit.userData.vel = new THREE.Vector3(Math.cos(ang) * speed, 2 + Math.random() * 3, Math.sin(ang) * speed);
+    group.add(bit); bits.push(bit);
+  }
+  const t0 = performance.now();
+  function tick() {
+    const dt2 = 0.016, age = (performance.now() - t0) / 1000;
+    for (const b of bits) {
+      b.position.addScaledVector(b.userData.vel, dt2);
+      b.userData.vel.y -= 6 * dt2;
+      b.scale.setScalar(Math.max(0, 1 - age / 0.6));
+    }
+    light.intensity = Math.max(0, 2.5 * (1 - age / 0.4));
+    if (age < 0.6) requestAnimationFrame(tick);
+    else scene.remove(group);
+  }
+  tick();
+}
+
+function castSpell() {
   const now = performance.now();
   if (now < state.attackCooldownUntil) return;
+  if (state.mana < SPELL_MANA_COST) {
+    showToast("🔋 Energi tidak cukup! Ambil cahaya di sekitar.");
+    playTone(140, 0.15);
+    return;
+  }
   state.attackCooldownUntil = now + ATTACK_COOLDOWN;
-  playTone(220, 0.08);
+  state.mana = Math.max(0, state.mana - SPELL_MANA_COST);
+  updateManaBar();
+  const def = SPELL_DEFS[state.character] || SPELL_DEFS.ayah;
+  playTone(def.sound, 0.15);
+  spawnSpellBurst(state.x, state.y + 1.4, state.z, def);
+
   let hitAny = false;
   for (const m of monsters) {
     if (!m.alive) continue;
@@ -586,8 +739,8 @@ function performAttack() {
       hitAny = true;
       m.hp -= ATTACK_DAMAGE;
       const body = m.mesh.userData.body;
-      body.material.emissive = new THREE.Color("#ff3333");
-      body.material.emissiveIntensity = 0.8;
+      body.material.emissive = new THREE.Color(def.glow);
+      body.material.emissiveIntensity = 1;
       setTimeout(() => { body.material.emissiveIntensity = 0; }, 150);
       const dx = m.x - state.x, dz = m.z - state.z;
       const dist = Math.hypot(dx, dz) || 1;
@@ -608,9 +761,18 @@ function performAttack() {
       }
     }
   }
+  if (boss.alive) {
+    const d = Math.hypot(state.x - boss.x, state.z - boss.z);
+    if (d < ATTACK_RANGE + 2) {
+      hitAny = true;
+      boss.hp = Math.max(0, boss.hp - ATTACK_DAMAGE);
+      updateBossBar();
+      if (boss.hp <= 0) defeatBoss();
+    }
+  }
   if (!hitAny) playTone(180, 0.08);
 }
-attackBtn.addEventListener("click", performAttack);
+attackBtn.addEventListener("click", castSpell);
 
 // =================================================================
 // Player
@@ -626,7 +788,8 @@ function spawnPlayer(characterType) {
 const state = {
   playerName: "", character: "ayah", inventory: new Set(), crystalCount: 0, flags: {},
   startTime: 0, x: 0, y: 0, z: 5, velY: 0, grounded: true, facing: 0,
-  hp: 100, maxHp: 100, invulnerableUntil: 0, attackCooldownUntil: 0,
+  hp: 100, maxHp: 100, mana: 100, maxMana: 100, invulnerableUntil: 0, attackCooldownUntil: 0,
+  stageDone: [false, false, false, false, false],
 };
 
 // =================================================================
@@ -938,6 +1101,76 @@ function updateHpBar() {
     ? "linear-gradient(90deg,#5be1a4,#33b6ff)"
     : pct > 20 ? "linear-gradient(90deg,#ffd76a,#ff9a5a)" : "linear-gradient(90deg,#ff3d3d,#ff6b6b)";
 }
+function updateManaBar() {
+  const pct = Math.max(0, state.mana / state.maxMana) * 100;
+  manaFillEl.style.width = pct + "%";
+}
+function updateBossBar() {
+  const pct = Math.max(0, boss.hp / boss.maxHp) * 100;
+  bossHpFillEl.style.width = pct + "%";
+}
+function defeatBoss() {
+  boss.alive = false;
+  playTone(120, 0.4);
+  bossBarEl.classList.add("hidden");
+  const startScale = boss.mesh.scale.x || 1;
+  const t0 = performance.now();
+  const shrink = () => {
+    const p = Math.min(1, (performance.now() - t0) / 900);
+    boss.mesh.scale.setScalar(startScale * (1 - p));
+    boss.mesh.position.y += 0.05;
+    if (p < 1) requestAnimationFrame(shrink);
+    else boss.mesh.visible = false;
+  };
+  shrink();
+  state.stageDone[4] = true;
+  setTimeout(() => endGame(), 1000);
+}
+
+// -------- 5-stage progression --------
+const STAGE_TRANSITIONS = [
+  { z: ZONES.VILLAGE_END - 8 },
+  { z: ZONES.FOREST_END - 8 },
+  { z: ZONES.RAMP_END - 8 },
+  { z: ZONES.MOUNTAIN_END - 8 },
+];
+function showStageComplete(n, onDone) {
+  stageOverlayTitle.textContent = `🌟 Tahap ${n} Selesai! 🌟`;
+  stageOverlaySub.textContent = n < 5 ? "Bersiap ke tahap berikutnya..." : "Petualangan selesai!";
+  stageOverlayEl.classList.remove("hidden");
+  requestAnimationFrame(() => stageOverlayEl.classList.add("show"));
+  playTone(880, 0.15);
+  setTimeout(() => playTone(1100, 0.2), 180);
+  setTimeout(() => {
+    stageOverlayEl.classList.remove("show");
+    setTimeout(() => stageOverlayEl.classList.add("hidden"), 400);
+    if (onDone) onDone();
+  }, 2000);
+}
+function checkStageProgress() {
+  const stageNow = stageOfZ(state.z);
+  if (!state.stageDone[0] && state.flags.metKekTua && state.inventory.has("torch")) {
+    state.stageDone[0] = true;
+    showStageComplete(1, () => {
+      state.x = 0; state.z = STAGE_TRANSITIONS[0].z; state.y = groundHeightAt(state.z);
+    });
+  } else if (!state.stageDone[1] && state.inventory.has("crystal1") && !monsters[0].alive && !monsters[1].alive) {
+    state.stageDone[1] = true;
+    showStageComplete(2, () => {
+      state.x = 0; state.z = STAGE_TRANSITIONS[1].z; state.y = groundHeightAt(state.z);
+    });
+  } else if (!state.stageDone[2] && state.inventory.has("crystal2") && state.inventory.has("key") && !monsters[2].alive && !monsters[3].alive) {
+    state.stageDone[2] = true;
+    showStageComplete(3, () => {
+      state.x = 0; state.z = STAGE_TRANSITIONS[2].z; state.y = groundHeightAt(state.z);
+    });
+  } else if (!state.stageDone[3] && state.flags.puzzleSolved && !monsters[4].alive && !monsters[5].alive) {
+    state.stageDone[3] = true;
+    showStageComplete(4, () => {
+      state.x = 0; state.z = STAGE_TRANSITIONS[3].z; state.y = groundHeightAt(state.z);
+    });
+  }
+}
 setInterval(() => {
   if (!state.startTime) return;
   const s = Math.floor((Date.now() - state.startTime) / 1000);
@@ -1067,20 +1300,28 @@ function animate() {
     let nx = state.x + moveX * MOVE_SPEED * dt;
     let nz = state.z + moveZ * MOVE_SPEED * dt;
 
-    // gates
-    if (nz < ZONES.FOREST_END && state.z >= ZONES.FOREST_END && !state.inventory.has("torch")) {
-      nz = ZONES.FOREST_END + 0.6;
-      showToast("🔒 Gelap sekali! Aku butuh obor untuk masuk.");
+    // gates — each zone unlocks once the previous stage's objective is complete
+    if (nz < ZONES.VILLAGE_END && state.z >= ZONES.VILLAGE_END && !state.stageDone[0]) {
+      nz = ZONES.VILLAGE_END + 0.6;
+      showToast("🔒 Bicaralah dulu dengan Kek Tua dan ambil obor dari Bibi Api!");
     }
-    if (nz < ZONES.RAMP_END && state.z >= ZONES.RAMP_END && !state.inventory.has("key")) {
+    if (nz < ZONES.FOREST_END && state.z >= ZONES.FOREST_END && !state.stageDone[1]) {
+      nz = ZONES.FOREST_END + 0.6;
+      showToast("🔒 Kalahkan monster hutan dan ambil kristalnya dulu!");
+    }
+    if (nz < ZONES.RAMP_END && state.z >= ZONES.RAMP_END && !state.stageDone[2]) {
       nz = ZONES.RAMP_END + 0.6;
-      showToast("🔒 Jalan ke atas terkunci. Aku butuh kunci.");
+      showToast("🔒 Kalahkan monster gua, ambil kristal & kunci dulu!");
+    }
+    if (nz < ZONES.MOUNTAIN_END && state.z >= ZONES.MOUNTAIN_END && !state.stageDone[3]) {
+      nz = ZONES.MOUNTAIN_END + 0.6;
+      showToast("🔒 Selesaikan altar sihir dan kalahkan monster gunung dulu!");
     }
 
     // lane bounds
     const half = laneHalfWidth(nz) - 1.2;
     nx = Math.min(half, Math.max(-half, nx));
-    nz = Math.min(6.5, Math.max(ZONES.MOUNTAIN_END + 4, nz));
+    nz = Math.min(6.5, Math.max(ZONES.LAIR_END + 4, nz));
 
     // obstacle collision
     for (const ob of obstacles) {
@@ -1113,12 +1354,23 @@ function animate() {
   player.position.set(state.x, state.y, state.z);
   player.rotation.y = state.facing;
 
-  // walk animation
+  // walk / jump animation (moving and jumping work together)
   const parts = player.userData.parts;
-  const moving = moveLen > 0.001 && state.grounded;
-  const swing = moving ? Math.sin(t * 9) * 0.55 : 0;
-  parts.legL.rotation.x = swing; parts.legR.rotation.x = -swing;
-  parts.armL.rotation.x = -swing * 0.8; parts.armR.rotation.x = swing * 0.8;
+  const moving = moveLen > 0.001;
+  const baseScale = player.userData.baseScale || 1;
+  if (state.grounded) {
+    const swing = moving ? Math.sin(t * 9) * 0.55 : 0;
+    parts.legL.rotation.x = swing; parts.legR.rotation.x = -swing;
+    parts.armL.rotation.x = -swing * 0.8; parts.armR.rotation.x = swing * 0.8;
+    player.scale.y += (baseScale - player.scale.y) * Math.min(1, dt * 10);
+  } else {
+    parts.legL.rotation.x += (-0.5 - parts.legL.rotation.x) * Math.min(1, dt * 8);
+    parts.legR.rotation.x += (-0.5 - parts.legR.rotation.x) * Math.min(1, dt * 8);
+    parts.armL.rotation.x += (-0.4 - parts.armL.rotation.x) * Math.min(1, dt * 8);
+    parts.armR.rotation.x += (-0.4 - parts.armR.rotation.x) * Math.min(1, dt * 8);
+    const stretchFactor = 1 + Math.min(0.18, Math.abs(state.velY) * 0.012);
+    player.scale.y += (baseScale * stretchFactor - player.scale.y) * Math.min(1, dt * 10);
+  }
 
   // -------- camera --------
   const camX = state.x + Math.sin(cameraYaw) * cameraDist * Math.cos(cameraPitch);
@@ -1158,13 +1410,66 @@ function animate() {
   }
 
   // -------- gate barrier visibility --------
-  caveBarrier.visible = !state.inventory.has("torch");
-  mountainBarrier.visible = !state.inventory.has("key");
+  stage1Barrier.visible = !state.stageDone[0];
+  caveBarrier.visible = !state.stageDone[1];
+  mountainBarrier.visible = !state.stageDone[2];
+  lairBarrier.visible = !state.stageDone[3];
+
+  // -------- stage progression --------
+  checkStageProgress();
+  const now = performance.now();
+
+  // -------- energy orbs (mana pickups) --------
+  for (const orb of energyOrbs) {
+    if (!orb.collected) {
+      orb.mesh.rotation.y += dt * 2;
+      orb.mesh.position.y = orb.baseY + Math.sin(t * 3 + orb.x) * 0.15;
+      const d = Math.hypot(state.x - orb.x, state.z - orb.z);
+      if (d < 2) {
+        orb.collected = true;
+        orb.mesh.visible = false;
+        orb.respawnAt = performance.now() + 12000;
+        state.mana = Math.min(state.maxMana, state.mana + 35);
+        updateManaBar();
+        playTone(700, 0.12);
+        showToast("💡 Energi sihir bertambah!");
+      }
+    } else if (performance.now() > orb.respawnAt) {
+      orb.collected = false;
+      orb.mesh.visible = true;
+    }
+  }
+
+  // -------- boss (Naga Penjaga, stage 5) --------
+  if (boss.alive) {
+    const dBoss = Math.hypot(state.x - boss.x, state.z - boss.z);
+    boss.mesh.position.y = MOUNTAIN_Y + Math.sin(t * 1.2) * 0.3;
+    if (dBoss < 30 && !boss.introShown) {
+      boss.introShown = true;
+      bossBarEl.classList.remove("hidden");
+      updateBossBar();
+      openDialogue("Naga Penjaga", [
+        "GRAOOO! Siapa yang berani memasuki sarangku?",
+        "Buktikan sihirmu, wahai petualang kecil!",
+      ], null);
+    }
+    if (dBoss < 40) {
+      boss.mesh.lookAt(state.x, boss.mesh.position.y, state.z);
+      if (dBoss < BOSS_ATTACK_RANGE && now > boss.lastAttackTime + BOSS_ATTACK_COOLDOWN && now > state.invulnerableUntil) {
+        boss.lastAttackTime = now;
+        state.hp -= BOSS_DAMAGE;
+        state.invulnerableUntil = now + INVULN_TIME;
+        flashDamage();
+        playTone(110, 0.3);
+        updateHpBar();
+        if (state.hp <= 0) respawnPlayer();
+      }
+    }
+  }
 
   // -------- monsters --------
   monsterTarget = null;
   let bestMonsterDist = Infinity;
-  const now = performance.now();
   for (const m of monsters) {
     if (!m.alive) continue;
     m.mesh.position.y = groundHeightAt(m.z) + Math.sin(t * 2 + m.bobOffset) * 0.12;
@@ -1181,7 +1486,8 @@ function animate() {
       if (state.hp <= 0) respawnPlayer();
     }
   }
-  attackBtn.classList.toggle("inactive", !monsterTarget || inDialogue() || inPuzzle());
+  const bossInRange = boss.alive && Math.hypot(state.x - boss.x, state.z - boss.z) < ENGAGE_RANGE + 3;
+  attackBtn.classList.toggle("inactive", !(monsterTarget || bossInRange) || inDialogue() || inPuzzle());
 
   // -------- NPC proximity + prompt --------
   currentTarget = null;
@@ -1193,8 +1499,11 @@ function animate() {
   if (currentTarget && !inDialogue() && !inPuzzle()) {
     promptEl.textContent = `✅ Bicara dengan ${currentTarget.name}`;
     promptEl.classList.remove("hidden");
+  } else if (bossInRange && !inDialogue() && !inPuzzle()) {
+    promptEl.textContent = `✨ Naga di dekatmu! Tekan Sihir`;
+    promptEl.classList.remove("hidden");
   } else if (monsterTarget && !inDialogue() && !inPuzzle()) {
-    promptEl.textContent = `⚔️ Monster di dekatmu! Tekan Serang`;
+    promptEl.textContent = `✨ Monster di dekatmu! Tekan Sihir`;
     promptEl.classList.remove("hidden");
   } else {
     promptEl.classList.add("hidden");
@@ -1215,7 +1524,8 @@ function startNewGame(name, characterType) {
   state.x = 0; state.y = 0; state.z = 5; state.facing = 0;
   state.inventory = new Set(); state.crystalCount = 0; state.flags = {};
   state.startTime = Date.now();
-  state.hp = state.maxHp; state.invulnerableUntil = 0;
+  state.hp = state.maxHp; state.mana = state.maxMana; state.invulnerableUntil = 0;
+  state.stageDone = [false, false, false, false, false];
   spawnPlayer(characterType);
   beginGameUI();
   connectMultiplayer();
@@ -1223,13 +1533,17 @@ function startNewGame(name, characterType) {
 function beginGameUI() {
   startScreen.classList.add("hidden");
   endScreen.classList.add("hidden");
+  bossBarEl.classList.add("hidden");
   document.querySelectorAll(".confetti-emoji").forEach((n) => n.remove());
   gameScreen.classList.remove("hidden");
   updateHud();
   updateHpBar();
+  updateManaBar();
 }
 
-setInterval(() => { areaNameEl.textContent = zoneName(state.z); }, 400);
+setInterval(() => {
+  areaNameEl.textContent = `Tahap ${stageOfZ(state.z)} — ${zoneName(state.z)}`;
+}, 400);
 
 let selectedCharacter = "ayah";
 document.querySelectorAll(".char-option").forEach((btn) => {

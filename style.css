@@ -103,10 +103,12 @@ button.secondary { background: rgba(255,255,255,0.12); box-shadow: 0 6px 0 rgba(
   border-radius: 14px;
 }
 .char-option .char-emoji { font-size: 1.7rem; }
+.char-option .char-spell { font-size: 0.62rem; font-weight: 600; color: #cfc4ff; }
 .char-option.selected {
   background: rgba(124,92,255,0.35);
   border-color: #ffd76a;
 }
+.char-option.selected .char-spell { color: #ffe9b0; }
 
 /* ---------- Game screen (full-bleed 3D) ---------- */
 #game-screen {
@@ -151,6 +153,76 @@ button.secondary { background: rgba(255,255,255,0.12); box-shadow: 0 6px 0 rgba(
   height: 100%; width: 100%;
   background: linear-gradient(90deg,#ff6b6b,#ff9a5a);
   transition: width 0.25s ease, background 0.25s ease;
+}
+
+#mana-bar {
+  width: 130px; height: 9px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(120,180,255,0.4);
+  overflow: hidden;
+}
+#mana-fill {
+  height: 100%; width: 100%;
+  background: linear-gradient(90deg,#5b9bff,#7fe3ff);
+  transition: width 0.25s ease;
+}
+
+#stage-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: rgba(10,5,25,0.75);
+  backdrop-filter: blur(3px);
+  text-align: center;
+  padding: 1rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+#stage-overlay.show { opacity: 1; }
+#stage-overlay-title {
+  font-size: clamp(1.4rem, 5vw, 2.2rem);
+  font-weight: 800;
+  background: linear-gradient(90deg,#ffd76a,#ff8bd0,#8bd3ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+#stage-overlay-sub { color: #cfc4ff; font-size: 0.95rem; }
+
+#boss-bar {
+  position: absolute;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(80vw, 420px);
+  z-index: 16;
+  text-align: center;
+}
+#boss-name {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #ff9a9a;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+  margin-bottom: 2px;
+}
+#boss-hp {
+  width: 100%; height: 14px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,120,120,0.5);
+  overflow: hidden;
+}
+#boss-hp-fill {
+  height: 100%; width: 100%;
+  background: linear-gradient(90deg,#ff3d3d,#ff8a5a);
+  transition: width 0.25s ease;
 }
 
 #dmg-flash {

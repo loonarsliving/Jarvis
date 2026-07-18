@@ -31,22 +31,23 @@
       <label style="font-size:0.85rem;color:#cfc4ff;">Pilih karaktermu</label>
       <div id="character-picker">
         <button class="char-option selected" data-char="ayah">
-          <span class="char-emoji">🧔</span><span>Ayah</span>
+          <span class="char-emoji">🧔</span><span>Ayah</span><span class="char-spell">🔥 Bola Api</span>
         </button>
         <button class="char-option" data-char="putri">
-          <span class="char-emoji">👸</span><span>Putri</span>
+          <span class="char-emoji">👸</span><span>Putri</span><span class="char-spell">✨ Sihir Bintang</span>
         </button>
         <button class="char-option" data-char="bayi">
-          <span class="char-emoji">👶</span><span>Bayi</span>
+          <span class="char-emoji">👶</span><span>Bayi</span><span class="char-spell">🫧 Gelembung Ajaib</span>
         </button>
       </div>
 
       <button id="start-btn">🚀 Mulai Petualangan</button>
       <div class="howto">
-        🎮 Gerak: WASD / panah / joystick layar<br>
-        🖱️ Kamera: geser layar / mouse untuk melihat sekeliling<br>
-        🦘 Lompat &nbsp;|&nbsp; ✅ Aksi: bicara &amp; berinteraksi &nbsp;|&nbsp; ⚔️ Serang: lawan monster!<br>
-        💎 Kumpulkan 3 Kristal Ajaib untuk menyelamatkan desa!<br>
+        🎮 Gerak: WASD / panah / joystick layar (bisa lompat sambil jalan!)<br>
+        🖱️ Kamera: gyro otomatis di HP / geser layar di komputer<br>
+        🦘 Lompat &nbsp;|&nbsp; ✅ Aksi: bicara &amp; berinteraksi &nbsp;|&nbsp; ✨ Sihir: lawan monster (butuh energi)!<br>
+        💡 Ambil bola cahaya di sepanjang jalan untuk mengisi energi sihirmu<br>
+        💎 Selesaikan 5 tahap petualangan dan kalahkan Naga di tahap akhir!<br>
         👨‍👩‍👧 Main bareng kakak/adik? Buka link ini di HP masing-masing, kalian bisa saling bertemu di dunia yang sama!<br>
         📱 Di HP, putar layar ke samping (landscape) untuk main paling nyaman!
       </div>
@@ -57,8 +58,9 @@
   <div id="game-screen" class="screen hidden">
     <div id="hud">
       <div class="hud-left">
-        <div class="area-name" id="area-name">Desa Damai</div>
+        <div class="area-name" id="area-name">Tahap 1 — Desa Damai</div>
         <div id="hp-bar"><div id="hp-fill"></div></div>
+        <div id="mana-bar"><div id="mana-fill"></div></div>
       </div>
       <div class="hud-right">
         <span id="crystal-count">💎 0/3</span>
@@ -70,9 +72,17 @@
     </div>
 
     <div id="canvas-wrap">
+      <div id="stage-overlay" class="hidden">
+        <div id="stage-overlay-title">🌟 Tahap 1 Selesai! 🌟</div>
+        <div id="stage-overlay-sub">Bersiap ke tahap berikutnya...</div>
+      </div>
       <div id="dmg-flash"></div>
       <div id="toast"></div>
       <div id="interact-prompt" class="hidden"></div>
+      <div id="boss-bar" class="hidden">
+        <div id="boss-name">🐉 Naga Penjaga</div>
+        <div id="boss-hp"><div id="boss-hp-fill"></div></div>
+      </div>
 
       <div id="dialogue" class="hidden">
         <div class="npc-name" id="dlg-name">???</div>
@@ -99,7 +109,7 @@
         <div id="joystick-base"><div id="joystick-knob"></div></div>
       </div>
       <div id="right-controls">
-        <button id="attack-btn" class="inactive">⚔️<br>Serang</button>
+        <button id="attack-btn" class="inactive">✨<br>Sihir</button>
         <button id="jump-btn">🦘</button>
         <button id="action-btn">✅<br>Aksi</button>
       </div>
