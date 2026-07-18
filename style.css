@@ -340,15 +340,6 @@ button.secondary { background: rgba(255,255,255,0.12); box-shadow: 0 6px 0 rgba(
   font-size: 0.8rem;
   background: linear-gradient(135deg,#ff6b6b,#ff3d3d);
   box-shadow: 0 5px 0 #8a1c1c;
-  opacity: 1;
-  transform: scale(1);
-  transition: opacity 0.18s ease, transform 0.18s ease;
-  pointer-events: auto;
-}
-#attack-btn.inactive {
-  opacity: 0;
-  transform: scale(0.7);
-  pointer-events: none;
 }
 #action-btn {
   width: 84px; height: 84px;

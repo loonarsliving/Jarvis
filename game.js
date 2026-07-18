@@ -717,6 +717,7 @@ function spawnSpellBurst(x, y, z, def) {
 }
 
 function castSpell() {
+  if (inDialogue() || inPuzzle()) return;
   const now = performance.now();
   if (now < state.attackCooldownUntil) return;
   if (state.mana < SPELL_MANA_COST) {
@@ -896,10 +897,16 @@ renderer.domElement.addEventListener("wheel", (e) => {
 }, { passive: true });
 
 // -------- gyroscope camera (default on devices that support it) --------
+const GYRO_SENSITIVITY = 1.7; // gain: how far the camera swings per degree of tilt
+const GYRO_SMOOTH = 16; // higher = snappier, lower = smoother/laggier
 let gyroBaseline = null; // { rawYaw, rawPitch, camYaw, camPitch }
+let gyroTargetYaw = 0, gyroTargetPitch = 0.35;
+let gyroLastEventAt = 0;
 
 function gyroReading(e) {
-  const angle = (screen.orientation && typeof screen.orientation.angle === "number") ? screen.orientation.angle : 90;
+  const angle = (screen.orientation && typeof screen.orientation.angle === "number")
+    ? screen.orientation.angle
+    : (typeof window.orientation === "number" ? window.orientation : 90);
   const beta = e.beta || 0, gamma = e.gamma || 0;
   let rawYaw, rawPitch;
   if (angle === 90) { rawYaw = gamma; rawPitch = beta; }
@@ -907,16 +914,19 @@ function gyroReading(e) {
   else { rawYaw = -beta; rawPitch = gamma; }
   return { rawYaw, rawPitch };
 }
-function onDeviceOrientation(e) {
+function handleOrientationEvent(e) {
   if (controlMode !== "gyro") return;
+  if (e.beta == null && e.gamma == null) return;
+  gyroLastEventAt = performance.now();
   const { rawYaw, rawPitch } = gyroReading(e);
   if (!gyroBaseline) { gyroBaseline = { rawYaw, rawPitch, camYaw: cameraYaw, camPitch: cameraPitch }; return; }
-  const dYaw = (rawYaw - gyroBaseline.rawYaw) * (Math.PI / 180);
-  const dPitch = (rawPitch - gyroBaseline.rawPitch) * (Math.PI / 180);
-  cameraYaw = gyroBaseline.camYaw - dYaw;
-  cameraPitch = Math.min(0.95, Math.max(-0.2, gyroBaseline.camPitch + dPitch));
+  const dYaw = (rawYaw - gyroBaseline.rawYaw) * (Math.PI / 180) * GYRO_SENSITIVITY;
+  const dPitch = (rawPitch - gyroBaseline.rawPitch) * (Math.PI / 180) * GYRO_SENSITIVITY;
+  gyroTargetYaw = gyroBaseline.camYaw - dYaw;
+  gyroTargetPitch = Math.min(1.15, Math.max(-0.4, gyroBaseline.camPitch + dPitch));
 }
-window.addEventListener("deviceorientation", onDeviceOrientation);
+window.addEventListener("deviceorientation", handleOrientationEvent);
+window.addEventListener("deviceorientationabsolute", handleOrientationEvent);
 
 function recalibrateGyro() { gyroBaseline = null; }
 
@@ -1278,6 +1288,15 @@ function animate() {
   if (!startScreen.classList.contains("hidden")) { renderer.render(scene, camera); return; }
   if (endScreen && !endScreen.classList.contains("hidden")) { renderer.render(scene, camera); return; }
 
+  // -------- gyro smoothing --------
+  if (controlMode === "gyro" && gyroBaseline) {
+    const smooth = Math.min(1, dt * GYRO_SMOOTH);
+    let diffYaw = gyroTargetYaw - cameraYaw;
+    diffYaw = Math.atan2(Math.sin(diffYaw), Math.cos(diffYaw));
+    cameraYaw += diffYaw * smooth;
+    cameraPitch += (gyroTargetPitch - cameraPitch) * smooth;
+  }
+
   // -------- movement input --------
   let ix = 0, iz = 0;
   if (!inDialogue() && !inPuzzle()) {
@@ -1487,7 +1506,6 @@ function animate() {
     }
   }
   const bossInRange = boss.alive && Math.hypot(state.x - boss.x, state.z - boss.z) < ENGAGE_RANGE + 3;
-  attackBtn.classList.toggle("inactive", !(monsterTarget || bossInRange) || inDialogue() || inPuzzle());
 
   // -------- NPC proximity + prompt --------
   currentTarget = null;
