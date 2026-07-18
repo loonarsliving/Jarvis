@@ -27,12 +27,27 @@
     <div class="card">
       <label for="player-name" style="font-size:0.85rem;color:#cfc4ff;">Siapa namamu, petualang?</label>
       <input id="player-name" type="text" maxlength="20" placeholder="Tulis namamu di sini...">
+
+      <label style="font-size:0.85rem;color:#cfc4ff;">Pilih karaktermu</label>
+      <div id="character-picker">
+        <button class="char-option selected" data-char="ayah">
+          <span class="char-emoji">🧔</span><span>Ayah</span>
+        </button>
+        <button class="char-option" data-char="putri">
+          <span class="char-emoji">👸</span><span>Putri</span>
+        </button>
+        <button class="char-option" data-char="bayi">
+          <span class="char-emoji">👶</span><span>Bayi</span>
+        </button>
+      </div>
+
       <button id="start-btn">🚀 Mulai Petualangan</button>
       <div class="howto">
         🎮 Gerak: WASD / panah / joystick layar<br>
         🖱️ Kamera: geser layar / mouse untuk melihat sekeliling<br>
         🦘 Lompat &nbsp;|&nbsp; ✅ Aksi: bicara &amp; berinteraksi &nbsp;|&nbsp; ⚔️ Serang: lawan monster!<br>
         💎 Kumpulkan 3 Kristal Ajaib untuk menyelamatkan desa!<br>
+        👨‍👩‍👧 Main bareng kakak/adik? Buka link ini di HP masing-masing, kalian bisa saling bertemu di dunia yang sama!<br>
         📱 Di HP, putar layar ke samping (landscape) untuk main paling nyaman!
       </div>
     </div>
@@ -100,6 +115,7 @@
   </div>
 
 </div>
+<script src="vendor/supabase.min.js"></script>
 <script type="module" src="game.js"></script>
 </body>
 </html>

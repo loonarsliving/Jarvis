@@ -149,7 +149,10 @@ function roundRect(ctx, x, y, w, h, r) {
 // =================================================================
 // Blocky humanoid builder
 // =================================================================
-function buildHumanoid({ skin = "#f2c197", shirt = "#4a9eff", pants = "#3b3b55", hair = "#5b3a29", scale = 1, hat = null } = {}) {
+function buildHumanoid({
+  skin = "#f2c197", shirt = "#4a9eff", pants = "#3b3b55", hair = "#5b3a29",
+  scale = 1, hat = null, beard = false, crown = false, skirt = null, headScale = 1,
+} = {}) {
   const g = new THREE.Group();
   const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 });
 
@@ -157,26 +160,48 @@ function buildHumanoid({ skin = "#f2c197", shirt = "#4a9eff", pants = "#3b3b55",
   torso.position.y = 1.55; torso.castShadow = true;
   g.add(torso);
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.85), mat(skin));
-  head.position.y = 2.65; head.castShadow = true;
+  const hs = 0.85 * headScale;
+  const headY = 2.2 + hs / 2 + 0.15;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(hs, hs, hs), mat(skin));
+  head.position.y = headY; head.castShadow = true;
   g.add(head);
 
   const eyeMat = new THREE.MeshBasicMaterial({ color: "#241a12" });
-  [-0.2, 0.2].forEach((ex) => {
-    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.05), eyeMat);
-    eye.position.set(ex, 2.68, 0.44);
+  [-0.2 * headScale, 0.2 * headScale].forEach((ex) => {
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.1 * headScale, 0.1 * headScale, 0.05), eyeMat);
+    eye.position.set(ex, headY + 0.03 * headScale, hs * 0.52);
     g.add(eye);
   });
 
-  const hairMesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.28, 0.9), mat(hair));
-  hairMesh.position.y = 3.08;
+  if (beard) {
+    const beardMesh = new THREE.Mesh(new THREE.BoxGeometry(hs * 0.55, hs * 0.35, hs * 0.3), mat(hair));
+    beardMesh.position.set(0, headY - hs * 0.42, hs * 0.32);
+    g.add(beardMesh);
+  }
+
+  const hairMesh = new THREE.Mesh(new THREE.BoxGeometry(hs * 1.06, 0.28 * headScale, hs * 1.06), mat(hair));
+  hairMesh.position.y = headY + hs * 0.51;
   g.add(hairMesh);
 
   if (hat) {
     const hatMesh = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.9, 12), mat(hat));
-    hatMesh.position.y = 3.5;
+    hatMesh.position.y = headY + hs * 0.75;
     hatMesh.castShadow = true;
     g.add(hatMesh);
+  }
+
+  if (crown) {
+    const gold = new THREE.MeshStandardMaterial({ color: "#ffd76a", roughness: 0.3, metalness: 0.6 });
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(hs * 0.48, hs * 0.52, 0.22, 10), gold);
+    ring.position.y = headY + hs * 0.58;
+    ring.castShadow = true;
+    g.add(ring);
+    for (let i = 0; i < 5; i++) {
+      const ang = (i / 5) * Math.PI * 2;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.24, 6), gold);
+      spike.position.set(Math.cos(ang) * hs * 0.4, headY + hs * 0.75, Math.sin(ang) * hs * 0.4);
+      g.add(spike);
+    }
   }
 
   function limb(w, h, d, color, x, y) {
@@ -189,14 +214,32 @@ function buildHumanoid({ skin = "#f2c197", shirt = "#4a9eff", pants = "#3b3b55",
   }
   const armL = limb(0.34, 1.1, 0.34, shirt, -0.72, 2.15);
   const armR = limb(0.34, 1.1, 0.34, shirt, 0.72, 2.15);
-  const legL = limb(0.4, 1.15, 0.4, pants, -0.32, 0.9);
-  const legR = limb(0.4, 1.15, 0.4, pants, 0.32, 0.9);
+  const legL = limb(0.4, skirt ? 0.5 : 1.15, 0.4, pants, -0.32, skirt ? 1.25 : 0.9);
+  const legR = limb(0.4, skirt ? 0.5 : 1.15, 0.4, pants, 0.32, skirt ? 1.25 : 0.9);
   g.add(armL, armR, legL, legR);
+
+  if (skirt) {
+    const skirtMesh = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.5, 10), mat(skirt));
+    skirtMesh.position.y = 1.15;
+    skirtMesh.castShadow = true;
+    g.add(skirtMesh);
+  }
 
   g.scale.setScalar(scale);
   g.userData.parts = { torso, head, armL, armR, legL, legR };
   return g;
 }
+
+function buildAdultMale() {
+  return buildHumanoid({ shirt: "#2d4a6b", pants: "#33210f", hair: "#2a1c14", skin: "#d8a06a", scale: 1.15, beard: true });
+}
+function buildPrincess() {
+  return buildHumanoid({ shirt: "#ff8fd0", pants: "#ff8fd0", hair: "#caa53d", skin: "#ffe0c2", scale: 0.95, crown: true, skirt: "#ffb6e6" });
+}
+function buildBaby() {
+  return buildHumanoid({ shirt: "#ffe27a", pants: "#bfe8ff", hair: "#caa53d", skin: "#ffe6cf", scale: 0.55, headScale: 1.35 });
+}
+const CHARACTER_BUILDERS = { ayah: buildAdultMale, putri: buildPrincess, bayi: buildBaby };
 
 function buildDragon() {
   const g = new THREE.Group();
@@ -572,15 +615,97 @@ attackBtn.addEventListener("click", performAttack);
 // =================================================================
 // Player
 // =================================================================
-const player = buildHumanoid({ shirt: "#4a9eff", pants: "#2d3450", hair: "#3a2a1c", skin: "#f2c197" });
-player.position.set(0, 0, 5);
-scene.add(player);
+let player = null;
+function spawnPlayer(characterType) {
+  if (player) scene.remove(player);
+  player = (CHARACTER_BUILDERS[characterType] || buildAdultMale)();
+  player.position.set(0, 0, 5);
+  scene.add(player);
+}
 
 const state = {
-  playerName: "", inventory: new Set(), crystalCount: 0, flags: {},
+  playerName: "", character: "ayah", inventory: new Set(), crystalCount: 0, flags: {},
   startTime: 0, x: 0, y: 0, z: 5, velY: 0, grounded: true, facing: 0,
   hp: 100, maxHp: 100, invulnerableUntil: 0, attackCooldownUntil: 0,
 };
+
+// =================================================================
+// Multiplayer (Supabase Realtime — presence + broadcast)
+// =================================================================
+const MP_ROOM = "kristal-ajaib-family";
+const myId = Math.random().toString(36).slice(2);
+const remotePlayers = new Map(); // id -> { mesh, target:{x,y,z,facing}, name, character }
+let mpChannel = null;
+
+function makeRemoteAvatar(character, name) {
+  const mesh = (CHARACTER_BUILDERS[character] || buildAdultMale)();
+  const tag = makeNameSprite(name || "Petualang");
+  tag.position.set(0, 3.6, 0);
+  mesh.add(tag);
+  scene.add(mesh);
+  return mesh;
+}
+
+function removeRemotePlayer(id) {
+  const rp = remotePlayers.get(id);
+  if (rp) { scene.remove(rp.mesh); remotePlayers.delete(id); }
+}
+
+function upsertRemotePlayer(id, payload) {
+  let rp = remotePlayers.get(id);
+  if (!rp) {
+    rp = { mesh: makeRemoteAvatar(payload.character, payload.name), target: { x: payload.x, y: payload.y, z: payload.z, facing: payload.facing } };
+    rp.mesh.position.set(payload.x, payload.y, payload.z);
+    remotePlayers.set(id, rp);
+  }
+  rp.target.x = payload.x; rp.target.y = payload.y; rp.target.z = payload.z; rp.target.facing = payload.facing;
+}
+
+function connectMultiplayer() {
+  if (mpChannel) { mpChannel.track({ name: state.playerName, character: state.character }); return; }
+  if (typeof window.supabase === "undefined") return;
+  try {
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    mpChannel = client.channel(MP_ROOM, { config: { presence: { key: myId } } });
+
+    mpChannel.on("broadcast", { event: "pos" }, ({ payload }) => {
+      if (payload.id === myId) return;
+      upsertRemotePlayer(payload.id, payload);
+    });
+
+    mpChannel.on("presence", { event: "leave" }, ({ key }) => {
+      if (key !== myId) removeRemotePlayer(key);
+    });
+
+    mpChannel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        mpChannel.track({ name: state.playerName, character: state.character });
+      }
+    });
+
+    clearInterval(mpBroadcastTimer);
+    mpBroadcastTimer = setInterval(() => {
+      if (!mpChannel) return;
+      mpChannel.send({
+        type: "broadcast", event: "pos",
+        payload: { id: myId, name: state.playerName, character: state.character, x: state.x, y: state.y, z: state.z, facing: state.facing },
+      });
+    }, 120);
+  } catch (e) { /* multiplayer unavailable, play solo */ }
+}
+let mpBroadcastTimer = null;
+
+function updateRemotePlayers(dt) {
+  for (const rp of remotePlayers.values()) {
+    const p = rp.mesh.position;
+    p.x += (rp.target.x - p.x) * Math.min(1, dt * 8);
+    p.y += (rp.target.y - p.y) * Math.min(1, dt * 8);
+    p.z += (rp.target.z - p.z) * Math.min(1, dt * 8);
+    let diff = rp.target.facing - rp.mesh.rotation.y;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    rp.mesh.rotation.y += diff * Math.min(1, dt * 8);
+  }
+}
 
 // =================================================================
 // Input
@@ -1013,6 +1138,8 @@ function animate() {
     promptEl.classList.add("hidden");
   }
 
+  updateRemotePlayers(dt);
+
   renderer.render(scene, camera);
 }
 animate();
@@ -1020,13 +1147,16 @@ animate();
 // =================================================================
 // Boot
 // =================================================================
-function startNewGame(name) {
+function startNewGame(name, characterType) {
   state.playerName = name;
+  state.character = characterType;
   state.x = 0; state.y = 0; state.z = 5; state.facing = 0;
   state.inventory = new Set(); state.crystalCount = 0; state.flags = {};
   state.startTime = Date.now();
   state.hp = state.maxHp; state.invulnerableUntil = 0;
+  spawnPlayer(characterType);
   beginGameUI();
+  connectMultiplayer();
 }
 function beginGameUI() {
   startScreen.classList.add("hidden");
@@ -1039,9 +1169,18 @@ function beginGameUI() {
 
 setInterval(() => { areaNameEl.textContent = zoneName(state.z); }, 400);
 
+let selectedCharacter = "ayah";
+document.querySelectorAll(".char-option").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".char-option").forEach((b) => b.classList.remove("selected"));
+    btn.classList.add("selected");
+    selectedCharacter = btn.dataset.char;
+  });
+});
+
 $("start-btn").addEventListener("click", () => {
   const name = ($("player-name").value || "Petualang").trim().slice(0, 20) || "Petualang";
-  startNewGame(name);
+  startNewGame(name, selectedCharacter);
 });
 $("player-name").addEventListener("keydown", (e) => { if (e.key === "Enter") $("start-btn").click(); });
 $("replay-btn").addEventListener("click", () => {

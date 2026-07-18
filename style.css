@@ -84,6 +84,30 @@ button.secondary { background: rgba(255,255,255,0.12); box-shadow: 0 6px 0 rgba(
 
 .howto { font-size: 0.85rem; color: #d8d0ff; line-height: 1.5; }
 
+#character-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.char-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.6rem 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(255,255,255,0.08);
+  box-shadow: none;
+  border: 2px solid transparent;
+  border-radius: 14px;
+}
+.char-option .char-emoji { font-size: 1.7rem; }
+.char-option.selected {
+  background: rgba(124,92,255,0.35);
+  border-color: #ffd76a;
+}
+
 /* ---------- Game screen (full-bleed 3D) ---------- */
 #game-screen {
   position: absolute;
