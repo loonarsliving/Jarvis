@@ -5,36 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Kristal Ajaib">
+<meta name="apple-mobile-web-app-title" content="Kristal Ajaib 3D">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1b1030">
-<meta name="description" content="Petualangan Kristal Ajaib — game petualangan seru untuk anak-anak, langsung main di browser.">
+<meta name="description" content="Petualangan Kristal Ajaib 3D — game petualangan 3D bergaya blocky untuk anak-anak, langsung main di browser.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<title>Petualangan Kristal Ajaib</title>
+<title>Petualangan Kristal Ajaib 3D</title>
 <link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 </head>
 <body>
 <div id="app">
 
   <!-- START SCREEN -->
   <div id="start-screen" class="screen">
-    <div class="title">✨ Petualangan<br>Kristal Ajaib ✨</div>
-    <p class="subtitle">Desa akan kehilangan cahayanya selamanya... kecuali kamu menemukan 3 Kristal Ajaib yang hilang!</p>
+    <div class="title">✨ Petualangan<br>Kristal Ajaib 3D ✨</div>
+    <p class="subtitle">Jelajahi dunia 3D penuh warna! Temukan 3 Kristal Ajaib untuk menyelamatkan desa dari kegelapan.</p>
     <div class="card">
       <label for="player-name" style="font-size:0.85rem;color:#cfc4ff;">Siapa namamu, petualang?</label>
       <input id="player-name" type="text" maxlength="20" placeholder="Tulis namamu di sini...">
       <button id="start-btn">🚀 Mulai Petualangan</button>
       <div class="howto">
-        🎮 Gerak: tombol panah / WASD / D-pad layar<br>
-        ✅ Aksi: tombol Aksi untuk bicara &amp; berinteraksi<br>
+        🎮 Gerak: WASD / panah / joystick layar<br>
+        🖱️ Kamera: geser layar / mouse untuk melihat sekeliling<br>
+        🦘 Lompat: Spasi / tombol Lompat &nbsp;|&nbsp; ✅ Aksi: bicara &amp; berinteraksi<br>
         💎 Kumpulkan 3 Kristal Ajaib untuk menyelamatkan desa!
       </div>
     </div>
   </div>
 
   <!-- GAME SCREEN -->
-  <div id="game-screen" class="screen hidden" style="justify-content:flex-start;">
+  <div id="game-screen" class="screen hidden">
     <div id="hud">
       <div class="area-name" id="area-name">Desa Damai</div>
       <div class="hud-right">
@@ -45,8 +49,8 @@
     </div>
 
     <div id="canvas-wrap">
-      <canvas id="game-canvas" width="576" height="384"></canvas>
       <div id="toast"></div>
+      <div id="interact-prompt" class="hidden"></div>
 
       <div id="dialogue" class="hidden">
         <div class="npc-name" id="dlg-name">???</div>
@@ -69,14 +73,13 @@
     </div>
 
     <div id="controls">
-      <div id="dpad">
-        <button class="up" data-dir="up">⬆️</button>
-        <button class="left" data-dir="left">⬅️</button>
-        <div class="action-center"></div>
-        <button class="right" data-dir="right">➡️</button>
-        <button class="down" data-dir="down">⬇️</button>
+      <div id="joystick-zone">
+        <div id="joystick-base"><div id="joystick-knob"></div></div>
       </div>
-      <button id="action-btn">✅<br>Aksi</button>
+      <div id="right-controls">
+        <button id="jump-btn">🦘</button>
+        <button id="action-btn">✅<br>Aksi</button>
+      </div>
     </div>
   </div>
 
@@ -91,6 +94,6 @@
   </div>
 
 </div>
-<script src="game.js"></script>
+<script type="module" src="game.js"></script>
 </body>
 </html>
