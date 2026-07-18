@@ -31,8 +31,9 @@
       <div class="howto">
         🎮 Gerak: WASD / panah / joystick layar<br>
         🖱️ Kamera: geser layar / mouse untuk melihat sekeliling<br>
-        🦘 Lompat: Spasi / tombol Lompat &nbsp;|&nbsp; ✅ Aksi: bicara &amp; berinteraksi<br>
-        💎 Kumpulkan 3 Kristal Ajaib untuk menyelamatkan desa!
+        🦘 Lompat &nbsp;|&nbsp; ✅ Aksi: bicara &amp; berinteraksi &nbsp;|&nbsp; ⚔️ Serang: lawan monster!<br>
+        💎 Kumpulkan 3 Kristal Ajaib untuk menyelamatkan desa!<br>
+        📱 Di HP, putar layar ke samping (landscape) untuk main paling nyaman!
       </div>
     </div>
   </div>
@@ -40,7 +41,10 @@
   <!-- GAME SCREEN -->
   <div id="game-screen" class="screen hidden">
     <div id="hud">
-      <div class="area-name" id="area-name">Desa Damai</div>
+      <div class="hud-left">
+        <div class="area-name" id="area-name">Desa Damai</div>
+        <div id="hp-bar"><div id="hp-fill"></div></div>
+      </div>
       <div class="hud-right">
         <span id="crystal-count">💎 0/3</span>
         <span id="timer">⏱ 00:00</span>
@@ -49,6 +53,7 @@
     </div>
 
     <div id="canvas-wrap">
+      <div id="dmg-flash"></div>
       <div id="toast"></div>
       <div id="interact-prompt" class="hidden"></div>
 
@@ -77,6 +82,7 @@
         <div id="joystick-base"><div id="joystick-knob"></div></div>
       </div>
       <div id="right-controls">
+        <button id="attack-btn" class="inactive">⚔️<br>Serang</button>
         <button id="jump-btn">🦘</button>
         <button id="action-btn">✅<br>Aksi</button>
       </div>

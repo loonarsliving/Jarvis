@@ -45,6 +45,7 @@ const dlgBox = $("dialogue"), dlgName = $("dlg-name"), dlgText = $("dlg-text");
 const toastEl = $("toast"), promptEl = $("interact-prompt");
 const areaNameEl = $("area-name"), crystalCountEl = $("crystal-count"), timerEl = $("timer");
 const puzzleOverlay = $("puzzle-overlay"), puzzleStatus = $("puzzle-status");
+const hpFillEl = $("hp-fill"), dmgFlashEl = $("dmg-flash"), attackBtn = $("attack-btn");
 
 // =================================================================
 // Sound
@@ -96,15 +97,24 @@ sun.shadow.camera.far = 150;
 scene.add(sun);
 scene.add(new THREE.AmbientLight("#ffffff", 0.25));
 
+function updateOrientation() {
+  const portrait = window.innerHeight > window.innerWidth;
+  const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  document.body.classList.toggle("force-landscape", portrait && isTouch);
+  resize();
+}
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const rotated = document.body.classList.contains("force-landscape");
+  const w = rotated ? window.innerHeight : window.innerWidth;
+  const h = rotated ? window.innerWidth : window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 }
-window.addEventListener("resize", resize);
-resize();
+window.addEventListener("resize", updateOrientation);
+window.addEventListener("orientationchange", updateOrientation);
+updateOrientation();
 
 // =================================================================
 // Name tag sprites
@@ -459,6 +469,107 @@ const caveBarrier = makeBarrier(ZONES.FOREST_END - 1);
 const mountainBarrier = makeBarrier(ZONES.RAMP_END + 1);
 
 // =================================================================
+// Monsters
+// =================================================================
+function buildMonster(bodyColor, eyeColor = "#ffe66d") {
+  const g = new THREE.Group();
+  const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 });
+  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.75, 0), mat(bodyColor));
+  body.position.y = 0.9; body.castShadow = true;
+  g.add(body);
+  const eyeMat = new THREE.MeshStandardMaterial({ color: eyeColor, emissive: eyeColor, emissiveIntensity: 0.6 });
+  [-0.28, 0.28].forEach((ex) => {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), eyeMat);
+    eye.position.set(ex, 1.05, 0.62);
+    g.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshBasicMaterial({ color: "#241a12" }));
+    pupil.position.set(ex, 1.05, 0.74);
+    g.add(pupil);
+  });
+  g.userData.body = body;
+  return g;
+}
+
+const monsters = [];
+function addMonster(id, x, z, color) {
+  const mesh = buildMonster(color);
+  mesh.position.set(x, groundHeightAt(z), z);
+  scene.add(mesh);
+  monsters.push({
+    id, x, z, homeX: x, homeZ: z, mesh, hp: 30, maxHp: 30, alive: true,
+    lastAttackTime: 0, bobOffset: Math.random() * 10,
+  });
+}
+addMonster("m1", 2, -145, "#4caf50");
+addMonster("m2", -15, -178, "#4caf50");
+addMonster("m3", 5, -245, "#8a4fd6");
+addMonster("m4", -3, -272, "#8a4fd6");
+addMonster("m5", -10, -345, "#7fd6e8");
+addMonster("m6", 10, -385, "#7fd6e8");
+
+const ATTACK_RANGE = 2.6, ENGAGE_RANGE = 7, ATTACK_DAMAGE = 15, MONSTER_DAMAGE = 12;
+const ATTACK_COOLDOWN = 450, MONSTER_ATTACK_COOLDOWN = 1400, INVULN_TIME = 900;
+let monsterTarget = null;
+
+function flashDamage() {
+  dmgFlashEl.classList.add("show");
+  setTimeout(() => dmgFlashEl.classList.remove("show"), 200);
+}
+
+function respawnPlayer() {
+  showToast("😵 Kamu kalah! Coba lagi, semangat!");
+  state.hp = state.maxHp;
+  state.invulnerableUntil = performance.now() + 1500;
+  if (state.z > ZONES.VILLAGE_END) { state.x = 0; state.z = 5; }
+  else if (state.z > ZONES.FOREST_END) { state.x = 0; state.z = ZONES.VILLAGE_END + 5; }
+  else if (state.z > ZONES.RAMP_END) { state.x = 0; state.z = ZONES.FOREST_END + 5; }
+  else { state.x = 0; state.z = ZONES.RAMP_END - 15; }
+  state.y = groundHeightAt(state.z);
+  state.velY = 0;
+  updateHpBar();
+  saveGame();
+}
+
+function performAttack() {
+  const now = performance.now();
+  if (now < state.attackCooldownUntil) return;
+  state.attackCooldownUntil = now + ATTACK_COOLDOWN;
+  playTone(220, 0.08);
+  let hitAny = false;
+  for (const m of monsters) {
+    if (!m.alive) continue;
+    const d = Math.hypot(state.x - m.x, state.z - m.z);
+    if (d < ATTACK_RANGE) {
+      hitAny = true;
+      m.hp -= ATTACK_DAMAGE;
+      const body = m.mesh.userData.body;
+      body.material.emissive = new THREE.Color("#ff3333");
+      body.material.emissiveIntensity = 0.8;
+      setTimeout(() => { body.material.emissiveIntensity = 0; }, 150);
+      const dx = m.x - state.x, dz = m.z - state.z;
+      const dist = Math.hypot(dx, dz) || 1;
+      m.x += (dx / dist) * 0.8; m.z += (dz / dist) * 0.8;
+      if (m.hp <= 0) {
+        m.alive = false;
+        playTone(140, 0.2);
+        showToast("👾 Monster dikalahkan!");
+        const startScale = m.mesh.scale.x;
+        const t0 = performance.now();
+        const shrink = () => {
+          const p = Math.min(1, (performance.now() - t0) / 300);
+          m.mesh.scale.setScalar(startScale * (1 - p));
+          if (p < 1) requestAnimationFrame(shrink);
+          else m.mesh.visible = false;
+        };
+        shrink();
+      }
+    }
+  }
+  if (!hitAny) playTone(180, 0.08);
+}
+attackBtn.addEventListener("click", performAttack);
+
+// =================================================================
 // Player
 // =================================================================
 const player = buildHumanoid({ shirt: "#4a9eff", pants: "#2d3450", hair: "#3a2a1c", skin: "#f2c197" });
@@ -468,6 +579,7 @@ scene.add(player);
 const state = {
   playerName: "", inventory: new Set(), crystalCount: 0, flags: {},
   startTime: 0, x: 0, y: 0, z: 5, velY: 0, grounded: true, facing: 0,
+  hp: 100, maxHp: 100, invulnerableUntil: 0, attackCooldownUntil: 0,
 };
 
 // =================================================================
@@ -632,6 +744,13 @@ $("puzzle-close").addEventListener("click", () => puzzleOverlay.classList.add("h
 // HUD / timer
 // =================================================================
 function updateHud() { crystalCountEl.textContent = `💎 ${state.crystalCount}/3`; }
+function updateHpBar() {
+  const pct = Math.max(0, state.hp / state.maxHp) * 100;
+  hpFillEl.style.width = pct + "%";
+  hpFillEl.style.background = pct > 50
+    ? "linear-gradient(90deg,#5be1a4,#33b6ff)"
+    : pct > 20 ? "linear-gradient(90deg,#ffd76a,#ff9a5a)" : "linear-gradient(90deg,#ff3d3d,#ff6b6b)";
+}
 setInterval(() => {
   if (!state.startTime) return;
   const s = Math.floor((Date.now() - state.startTime) / 1000);
@@ -855,6 +974,28 @@ function animate() {
   caveBarrier.visible = !state.inventory.has("torch");
   mountainBarrier.visible = !state.inventory.has("key");
 
+  // -------- monsters --------
+  monsterTarget = null;
+  let bestMonsterDist = Infinity;
+  const now = performance.now();
+  for (const m of monsters) {
+    if (!m.alive) continue;
+    m.mesh.position.y = groundHeightAt(m.z) + Math.sin(t * 2 + m.bobOffset) * 0.12;
+    m.mesh.rotation.y += dt * 0.6;
+    const d = Math.hypot(state.x - m.x, state.z - m.z);
+    if (d < ENGAGE_RANGE && d < bestMonsterDist) { bestMonsterDist = d; monsterTarget = m; }
+    if (d < ATTACK_RANGE && now > m.lastAttackTime + MONSTER_ATTACK_COOLDOWN && now > state.invulnerableUntil) {
+      m.lastAttackTime = now;
+      state.hp -= MONSTER_DAMAGE;
+      state.invulnerableUntil = now + INVULN_TIME;
+      flashDamage();
+      playTone(160, 0.2);
+      updateHpBar();
+      if (state.hp <= 0) respawnPlayer();
+    }
+  }
+  attackBtn.classList.toggle("inactive", !monsterTarget || inDialogue() || inPuzzle());
+
   // -------- NPC proximity + prompt --------
   currentTarget = null;
   let bestDist = Infinity;
@@ -864,6 +1005,9 @@ function animate() {
   }
   if (currentTarget && !inDialogue() && !inPuzzle()) {
     promptEl.textContent = `✅ Bicara dengan ${currentTarget.name}`;
+    promptEl.classList.remove("hidden");
+  } else if (monsterTarget && !inDialogue() && !inPuzzle()) {
+    promptEl.textContent = `⚔️ Monster di dekatmu! Tekan Serang`;
     promptEl.classList.remove("hidden");
   } else {
     promptEl.classList.add("hidden");
@@ -881,6 +1025,7 @@ function startNewGame(name) {
   state.x = 0; state.y = 0; state.z = 5; state.facing = 0;
   state.inventory = new Set(); state.crystalCount = 0; state.flags = {};
   state.startTime = Date.now();
+  state.hp = state.maxHp; state.invulnerableUntil = 0;
   beginGameUI();
 }
 function beginGameUI() {
@@ -889,6 +1034,7 @@ function beginGameUI() {
   document.querySelectorAll(".confetti-emoji").forEach((n) => n.remove());
   gameScreen.classList.remove("hidden");
   updateHud();
+  updateHpBar();
 }
 
 setInterval(() => { areaNameEl.textContent = zoneName(state.z); }, 400);
