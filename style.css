@@ -1,0 +1,255 @@
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: #1b1030;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Baloo 2", sans-serif;
+  color: #fff;
+}
+#app {
+  position: relative;
+  width: 100%;
+  height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* ---------- Screens (start / end) ---------- */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  text-align: center;
+  padding: 1.5rem;
+  background: radial-gradient(ellipse at 50% 20%, #3a2a6b 0%, #1b1030 70%);
+  z-index: 30;
+}
+.hidden { display: none !important; }
+
+.title {
+  font-size: clamp(1.6rem, 6vw, 2.6rem);
+  font-weight: 800;
+  background: linear-gradient(90deg,#ffd76a,#ff8bd0,#8bd3ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1.2;
+}
+.subtitle { color: #cfc4ff; font-size: 0.95rem; max-width: 26rem; }
+
+.card {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 20px;
+  padding: 1.4rem;
+  width: min(90vw, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  backdrop-filter: blur(6px);
+}
+
+input[type="text"] {
+  font-size: 1.1rem;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  border: none;
+  outline: none;
+  background: #fff;
+  color: #24173f;
+  text-align: center;
+}
+
+button {
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.85rem 1.4rem;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(135deg,#7c5cff,#ff6bd6);
+  color: #fff;
+  box-shadow: 0 6px 0 #4a2fa0;
+  transition: transform 0.08s ease;
+}
+button:active { transform: translateY(4px); box-shadow: 0 2px 0 #4a2fa0; }
+button.secondary { background: rgba(255,255,255,0.12); box-shadow: 0 6px 0 rgba(0,0,0,0.3); }
+
+.howto { font-size: 0.85rem; color: #d8d0ff; line-height: 1.5; }
+
+/* ---------- Game screen ---------- */
+#game-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 10;
+}
+
+#hud {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  gap: 0.5rem;
+}
+#hud .area-name { color: #ffd76a; font-size: 0.85rem; font-weight: 600; }
+#hud .hud-right { display: flex; align-items: center; gap: 0.6rem; }
+#mute-btn {
+  background: rgba(255,255,255,0.12);
+  box-shadow: none;
+  padding: 0.4rem 0.6rem;
+  font-size: 1.1rem;
+  border-radius: 10px;
+}
+
+#canvas-wrap {
+  position: relative;
+  width: min(96vw, 576px);
+  aspect-ratio: 12 / 8;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 0 0 4px rgba(255,255,255,0.15), 0 12px 30px rgba(0,0,0,0.5);
+}
+#game-canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+#toast {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20,10,40,0.9);
+  border: 1px solid rgba(255,255,255,0.25);
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 20;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(6px); }
+
+/* Dialogue */
+#dialogue {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  background: rgba(15,8,30,0.95);
+  border-top: 3px solid #ffd76a;
+  padding: 0.9rem 1rem 1.1rem;
+  z-index: 25;
+}
+#dialogue .npc-name { color: #ffd76a; font-weight: 800; font-size: 0.95rem; margin-bottom: 0.25rem; }
+#dialogue .npc-text { font-size: 1rem; line-height: 1.4; min-height: 2.6em; }
+#dialogue .npc-hint { margin-top: 0.5rem; font-size: 0.8rem; color: #cfc4ff; text-align: right; }
+
+/* Controls */
+#controls {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0.6rem 1rem 1rem;
+  margin-top: auto;
+}
+#dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  grid-template-rows: repeat(3, 52px);
+  gap: 4px;
+}
+#dpad button {
+  padding: 0; box-shadow: 0 4px 0 #4a2fa0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem; border-radius: 12px;
+}
+#dpad .up { grid-column: 2; grid-row: 1; }
+#dpad .left { grid-column: 1; grid-row: 2; }
+#dpad .action-center { grid-column: 2; grid-row: 2; background: rgba(255,255,255,0.1); box-shadow: none; }
+#dpad .right { grid-column: 3; grid-row: 2; }
+#dpad .down { grid-column: 2; grid-row: 3; }
+
+#action-btn {
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  font-size: 0.95rem;
+  background: linear-gradient(135deg,#5be1a4,#33b6ff);
+  box-shadow: 0 6px 0 #1c7a63;
+}
+
+/* Puzzle overlay */
+#puzzle-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: rgba(10,5,25,0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+#puzzle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 90px);
+  grid-template-rows: repeat(2, 90px);
+  gap: 10px;
+}
+.puzzle-cell {
+  border-radius: 16px;
+  border: none;
+  opacity: 0.55;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.puzzle-cell.lit { opacity: 1; transform: scale(1.05); }
+.puzzle-cell.c0 { background: #ff6b6b; }
+.puzzle-cell.c1 { background: #5be1a4; }
+.puzzle-cell.c2 { background: #5bc0ff; }
+.puzzle-cell.c3 { background: #ffe66d; }
+
+/* Leaderboard */
+#leaderboard {
+  width: 100%;
+  text-align: left;
+  font-size: 0.85rem;
+  max-height: 160px;
+  overflow-y: auto;
+  background: rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+}
+#leaderboard ol { padding-left: 1.2rem; }
+#leaderboard li { margin-bottom: 0.2rem; }
+
+.confetti-emoji {
+  position: absolute;
+  font-size: 1.6rem;
+  top: -10%;
+  animation: fall linear forwards;
+  pointer-events: none;
+}
+@keyframes fall {
+  to { transform: translateY(115vh) rotate(360deg); opacity: 0.9; }
+}
+
+@media (max-width: 380px) {
+  #dpad { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); }
+  #action-btn { width: 72px; height: 72px; font-size: 0.85rem; }
+}

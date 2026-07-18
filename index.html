@@ -1,440 +1,96 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-
-  <!-- PWA: iOS Home Screen -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="JARVIS">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#07070A">
-  <link rel="manifest" href="/manifest.json">
-
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=Cormorant+Garamond:wght@300;400;600&display=swap">
-
-  <title>JARVIS</title>
-
-  <style>
-    /* ── Reset ───────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; background: #07070A; -webkit-tap-highlight-color: transparent; }
-    body { font-family: 'DM Sans', sans-serif; }
-
-    /* ── CSS Variables per State ─────────── */
-    :root {
-      --c-bg:     #07070A;
-      --c-color:  #C9A452;
-      --c-glow:   rgba(201,164,82,0.35);
-      --c-text:   #C8C4BC;
-      --c-dim:    #3A3A36;
-      --c-muted:  #55554F;
-    }
-    body.listening  { --c-color: #4A9EBF; --c-glow: rgba(74,158,191,0.35); }
-    body.thinking   { --c-color: #C9A452; --c-glow: rgba(201,164,82,0.35); }
-    body.speaking   { --c-color: #5BBF8A; --c-glow: rgba(91,191,138,0.35); }
-
-    /* ── Layout ──────────────────────────── */
-    #app {
-      width: 100%; height: 100svh;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: space-between;
-      position: relative;
-      padding-top: env(safe-area-inset-top, 0px);
-      padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
-
-    /* Grid bg */
-    #app::before {
-      content: '';
-      position: absolute; inset: 0;
-      background-image:
-        linear-gradient(rgba(100,140,220,0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(100,140,220,0.03) 1px, transparent 1px);
-      background-size: 44px 44px;
-      pointer-events: none;
-    }
-
-    /* Ambient glow behind orb */
-    #ambient {
-      position: absolute; inset: 0; pointer-events: none;
-      background: radial-gradient(ellipse 55% 45% at 50% 54%, var(--c-glow) 0%, transparent 70%);
-      transition: background 0.8s ease;
-    }
-
-    /* ── Header ──────────────────────────── */
-    #header {
-      width: 100%; padding: 1.4rem 1.6rem 0;
-      display: flex; align-items: center; justify-content: space-between;
-      position: relative; z-index: 2;
-    }
-    #logo {
-      font-family: 'Cormorant Garamond', serif;
-      font-size: 1.5rem; font-weight: 400;
-      color: var(--c-color); letter-spacing: 0.35em;
-      transition: color 0.5s;
-    }
-    #subtitle { font-size: 0.6rem; color: var(--c-muted); letter-spacing: 0.12em; text-transform: uppercase; margin-top: 2px; }
-    #badges { display: flex; gap: 6px; }
-    .badge {
-      width: 28px; height: 28px; border-radius: 8px;
-      background: color-mix(in srgb, var(--c-color) 8%, transparent);
-      border: 1px solid color-mix(in srgb, var(--c-color) 20%, transparent);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.72rem; transition: all 0.5s;
-    }
-
-    /* ── Orb ─────────────────────────────── */
-    #orb-wrap {
-      position: relative; z-index: 2;
-      display: flex; flex-direction: column; align-items: center; gap: 2rem;
-    }
-    #orb {
-      position: relative; width: 180px; height: 180px;
-      cursor: pointer; -webkit-user-select: none; user-select: none;
-    }
-
-    /* Ripple rings — appear when listening/speaking */
-    .ripple {
-      position: absolute; inset: 0; border-radius: 50%;
-      border: 1px solid var(--c-color);
-      animation: ripple 2s ease-out infinite;
-      pointer-events: none; opacity: 0;
-    }
-    .ripple:nth-child(1) { animation-delay: 0s; }
-    .ripple:nth-child(2) { animation-delay: 0.65s; }
-    .ripple:nth-child(3) { animation-delay: 1.3s; }
-    body.listening .ripple,
-    body.speaking  .ripple { opacity: 1; }
-
-    /* Outer ring */
-    #orb-outer {
-      position: absolute; inset: 0; border-radius: 50%;
-      border: 1px solid color-mix(in srgb, var(--c-color) 30%, transparent);
-      transition: border-color 0.5s;
-      animation: pulse-idle 3s ease-in-out infinite;
-    }
-    body.listening #orb-outer { animation: pulse-fast 0.8s ease-in-out infinite; }
-    body.speaking  #orb-outer { animation: pulse-talk 1.2s ease-in-out infinite; }
-
-    /* Mid ring — spins when thinking */
-    #orb-mid {
-      position: absolute; inset: 26px; border-radius: 50%;
-      background: radial-gradient(circle at 38% 36%, color-mix(in srgb, var(--c-color) 15%, transparent), transparent 65%);
-      border: 1px solid color-mix(in srgb, var(--c-color) 35%, transparent);
-      transition: all 0.5s;
-    }
-    #orb-arc {
-      position: absolute; inset: 18px; border-radius: 50%;
-      border: 1.5px solid transparent;
-      border-top-color: color-mix(in srgb, var(--c-color) 70%, transparent);
-      opacity: 0; transition: opacity 0.3s;
-    }
-    body.thinking #orb-arc { opacity: 1; animation: spin 1s linear infinite; }
-
-    /* Core glow */
-    #orb-core {
-      position: absolute; inset: 54px; border-radius: 50%;
-      background: radial-gradient(circle at 35% 32%, var(--c-color) 0%, color-mix(in srgb, var(--c-color) 40%, transparent) 60%);
-      box-shadow: 0 0 32px var(--c-glow), inset 0 0 16px color-mix(in srgb, var(--c-color) 30%, transparent);
-      transition: all 0.5s;
-      animation: core-pulse 3s ease-in-out infinite;
-    }
-    body.listening #orb-core { animation: core-fast 0.8s ease-in-out infinite; }
-    body.speaking  #orb-core { animation: core-talk 1.2s ease-in-out infinite; }
-
-    /* ── Status label ────────────────────── */
-    #status {
-      font-size: 0.7rem; color: var(--c-color);
-      letter-spacing: 0.22em; text-transform: uppercase;
-      transition: color 0.5s;
-    }
-    #transcript {
-      font-size: 0.82rem; color: var(--c-text);
-      max-width: 260px; text-align: center;
-      font-style: italic; opacity: 0.7; line-height: 1.5;
-      min-height: 1.2rem;
-    }
-
-    /* ── Bottom ──────────────────────────── */
-    #bottom {
-      width: 100%; position: relative; z-index: 2;
-      padding: 0 1.5rem 1.6rem;
-    }
-    #divider {
-      height: 1px; margin-bottom: 1.2rem;
-      background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c-color) 30%, transparent), transparent);
-      transition: background 0.5s;
-    }
-    #reply {
-      color: var(--c-text); font-size: 0.85rem; line-height: 1.7;
-      text-align: center; margin-bottom: 1rem;
-      transition: opacity 0.4s; min-height: 1.5rem;
-    }
-    #reply::before { content: '◆ '; color: var(--c-color); font-size: 0.55rem; vertical-align: middle; margin-right: 4px; }
-
-    /* Text fallback input */
-    #text-row { display: flex; gap: 8px; margin-bottom: 0.7rem; }
-    #text-input {
-      flex: 1; background: color-mix(in srgb, var(--c-color) 6%, transparent);
-      border: 1px solid color-mix(in srgb, var(--c-color) 20%, transparent);
-      border-radius: 10px; padding: 0.6rem 0.85rem;
-      color: var(--c-text); font-size: 0.82rem; font-family: inherit;
-      outline: none; transition: border-color 0.2s;
-    }
-    #text-input:focus { border-color: color-mix(in srgb, var(--c-color) 45%, transparent); }
-    #text-input::placeholder { color: rgba(200,196,188,0.25); }
-    #text-send {
-      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
-      background: linear-gradient(135deg, #C9A452, #7A5F2A);
-      border: none; cursor: pointer;
-      color: #07070A; font-weight: 700; font-size: 1rem;
-    }
-    #text-send:disabled { background: rgba(201,164,82,0.15); color: var(--c-muted); cursor: not-allowed; }
-    #toggle-text {
-      text-align: center; font-size: 0.65rem; color: var(--c-muted);
-      letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
-    }
-    #text-row { display: none; }
-
-    /* ── Keyframes ───────────────────────── */
-    @keyframes pulse-idle  { 0%,100% { transform: scale(1);    } 50% { transform: scale(1.03); } }
-    @keyframes pulse-fast  { 0%,100% { transform: scale(1);    } 50% { transform: scale(1.08); } }
-    @keyframes pulse-talk  { 0%,100% { transform: scale(1);    } 25% { transform: scale(1.05); } 75% { transform: scale(1.03); } }
-    @keyframes core-pulse  { 0%,100% { box-shadow: 0 0 24px var(--c-glow); } 50% { box-shadow: 0 0 44px var(--c-glow); } }
-    @keyframes core-fast   { 0%,100% { box-shadow: 0 0 20px var(--c-glow); } 50% { box-shadow: 0 0 56px var(--c-glow); } }
-    @keyframes core-talk   { 0%,100% { box-shadow: 0 0 24px var(--c-glow); } 30% { box-shadow: 0 0 50px var(--c-glow); } }
-    @keyframes ripple { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(2.6); opacity: 0; } }
-    @keyframes spin   { to { transform: rotate(360deg); } }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kristal Ajaib">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b1030">
+<meta name="description" content="Petualangan Kristal Ajaib — game petualangan seru untuk anak-anak, langsung main di browser.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Petualangan Kristal Ajaib</title>
+<link rel="stylesheet" href="style.css">
 </head>
-
-<body class="idle">
+<body>
 <div id="app">
 
-  <div id="ambient"></div>
-
-  <!-- Header -->
-  <div id="header">
-    <div>
-      <div id="logo">JARVIS</div>
-      <div id="subtitle">Haluoleo · Operational AI</div>
-    </div>
-    <div id="badges">
-      <div class="badge" title="Internet">🌐</div>
-      <div class="badge" title="Supabase Data">📊</div>
-      <div class="badge" title="Claude AI">⚡</div>
+  <!-- START SCREEN -->
+  <div id="start-screen" class="screen">
+    <div class="title">✨ Petualangan<br>Kristal Ajaib ✨</div>
+    <p class="subtitle">Desa akan kehilangan cahayanya selamanya... kecuali kamu menemukan 3 Kristal Ajaib yang hilang!</p>
+    <div class="card">
+      <label for="player-name" style="font-size:0.85rem;color:#cfc4ff;">Siapa namamu, petualang?</label>
+      <input id="player-name" type="text" maxlength="20" placeholder="Tulis namamu di sini...">
+      <button id="start-btn">🚀 Mulai Petualangan</button>
+      <div class="howto">
+        🎮 Gerak: tombol panah / WASD / D-pad layar<br>
+        ✅ Aksi: tombol Aksi untuk bicara &amp; berinteraksi<br>
+        💎 Kumpulkan 3 Kristal Ajaib untuk menyelamatkan desa!
+      </div>
     </div>
   </div>
 
-  <!-- Orb -->
-  <div id="orb-wrap">
-    <div id="orb">
-      <div class="ripple"></div>
-      <div class="ripple"></div>
-      <div class="ripple"></div>
-      <div id="orb-outer"></div>
-      <div id="orb-arc"></div>
-      <div id="orb-mid"></div>
-      <div id="orb-core"></div>
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen hidden" style="justify-content:flex-start;">
+    <div id="hud">
+      <div class="area-name" id="area-name">Desa Damai</div>
+      <div class="hud-right">
+        <span id="crystal-count">💎 0/3</span>
+        <span id="timer">⏱ 00:00</span>
+        <button id="mute-btn" title="Suara">🔊</button>
+      </div>
     </div>
-    <div id="status">Press to speak</div>
-    <div id="transcript"></div>
+
+    <div id="canvas-wrap">
+      <canvas id="game-canvas" width="576" height="384"></canvas>
+      <div id="toast"></div>
+
+      <div id="dialogue" class="hidden">
+        <div class="npc-name" id="dlg-name">???</div>
+        <div class="npc-text" id="dlg-text">...</div>
+        <div class="npc-hint">tap untuk lanjut ▶</div>
+      </div>
+
+      <div id="puzzle-overlay" class="hidden">
+        <div class="title" style="font-size:1.2rem;">🔮 Altar Ajaib</div>
+        <p class="subtitle">Ingat &amp; ulangi urutan warnanya!</p>
+        <div id="puzzle-grid">
+          <button class="puzzle-cell c0" data-i="0"></button>
+          <button class="puzzle-cell c1" data-i="1"></button>
+          <button class="puzzle-cell c2" data-i="2"></button>
+          <button class="puzzle-cell c3" data-i="3"></button>
+        </div>
+        <div id="puzzle-status" style="font-size:0.9rem;color:#cfc4ff;">Perhatikan urutannya...</div>
+        <button class="secondary" id="puzzle-close">Batal</button>
+      </div>
+    </div>
+
+    <div id="controls">
+      <div id="dpad">
+        <button class="up" data-dir="up">⬆️</button>
+        <button class="left" data-dir="left">⬅️</button>
+        <div class="action-center"></div>
+        <button class="right" data-dir="right">➡️</button>
+        <button class="down" data-dir="down">⬇️</button>
+      </div>
+      <button id="action-btn">✅<br>Aksi</button>
+    </div>
   </div>
 
-  <!-- Bottom -->
-  <div id="bottom">
-    <div id="divider"></div>
-    <div id="reply">Online and at your service, Sir.</div>
-
-    <div id="text-row">
-      <input id="text-input" type="text" placeholder="Type your command, Sir…" autocomplete="off">
-      <button id="text-send" disabled>↑</button>
+  <!-- END SCREEN -->
+  <div id="end-screen" class="screen hidden">
+    <div class="title" style="font-size:2rem;">🎉 Desa Diselamatkan! 🎉</div>
+    <p class="subtitle" id="end-summary">Kamu menemukan 3 Kristal Ajaib!</p>
+    <div class="card">
+      <div id="leaderboard"><em>Memuat papan peringkat...</em></div>
+      <button id="replay-btn">🔁 Main Lagi</button>
     </div>
-
-    <div id="toggle-text">⌨ Type instead</div>
   </div>
 
 </div>
-
-<script>
-// ─── State ───────────────────────────────────────────────────────
-const STATES = { IDLE: 'idle', LISTENING: 'listening', THINKING: 'thinking', SPEAKING: 'speaking' };
-const LABELS = { idle: 'Press to speak', listening: 'Listening, Sir…', thinking: 'Processing…', speaking: 'Speaking…' };
-
-let state     = STATES.IDLE;
-let messages  = JSON.parse(localStorage.getItem('jarvis_msgs') || '[]').slice(-30);
-let bestVoice = null;
-let textModeActive = false;
-
-const $body      = document.body;
-const $orb       = document.getElementById('orb');
-const $status    = document.getElementById('status');
-const $transcript= document.getElementById('transcript');
-const $reply     = document.getElementById('reply');
-const $textRow   = document.getElementById('text-row');
-const $textInput = document.getElementById('text-input');
-const $textSend  = document.getElementById('text-send');
-const $toggle    = document.getElementById('toggle-text');
-
-// ─── Set state ───────────────────────────────────────────────────
-function setState(s) {
-  state = s;
-  $body.className = s;
-  $status.textContent = LABELS[s];
-  if (s !== STATES.LISTENING) $transcript.textContent = '';
-}
-
-// ─── Voice selection ─────────────────────────────────────────────
-function loadVoice() {
-  const vv = speechSynthesis.getVoices();
-  const prefer = ['Daniel', 'Arthur', 'Alex', 'Rishi', 'Oliver', 'Gordon', 'Tom'];
-  for (const name of prefer) {
-    const v = vv.find(v => v.name.includes(name));
-    if (v) { bestVoice = v; return; }
-  }
-  bestVoice = vv.find(v => v.lang === 'en-GB') || vv.find(v => v.lang.startsWith('en')) || vv[0] || null;
-}
-loadVoice();
-speechSynthesis.onvoiceschanged = loadVoice;
-
-// ─── TTS ─────────────────────────────────────────────────────────
-function speak(text) {
-  speechSynthesis.cancel();
-  $reply.textContent = text;
-  const utt = new SpeechSynthesisUtterance(text);
-  if (bestVoice) utt.voice = bestVoice;
-  utt.rate = 0.9; utt.pitch = 0.82; utt.volume = 1;
-  utt.onstart = () => setState(STATES.SPEAKING);
-  utt.onend   = () => setState(STATES.IDLE);
-  utt.onerror = () => setState(STATES.IDLE);
-  setState(STATES.SPEAKING);
-  speechSynthesis.speak(utt);
-
-  // iOS workaround: re-trigger if synthesis stalls
-  setTimeout(() => {
-    if (state === STATES.SPEAKING && !speechSynthesis.speaking) setState(STATES.IDLE);
-  }, (text.split(' ').length / 2.5 + 3) * 1000);
-}
-
-// ─── API call ─────────────────────────────────────────────────────
-async function askJarvis(userText) {
-  setState(STATES.THINKING);
-  $transcript.textContent = '';
-  const history = [...messages, { role: 'user', content: userText }];
-
-  try {
-    const r = await fetch('https://gluoioiimapyhchdasfl.supabase.co/functions/v1/jarvis-chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history })
-    });
-    const data = await r.json();
-
-    if (data.error) {
-      const errMsg = 'My apologies, Sir. ' + data.error;
-      speak(errMsg); return;
-    }
-
-    messages = [...history, { role: 'assistant', content: data.text }];
-    // Persist last 30 messages
-    localStorage.setItem('jarvis_msgs', JSON.stringify(messages.slice(-30)));
-    speak(data.text);
-
-  } catch (e) {
-    speak('My apologies, Sir. A network error occurred.');
-    setState(STATES.IDLE);
-  }
-}
-
-// ─── Speech recognition ───────────────────────────────────────────
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let hasASR = !!SR;
-
-function startListening() {
-  if (state === STATES.SPEAKING) { speechSynthesis.cancel(); setState(STATES.IDLE); return; }
-  if (state !== STATES.IDLE) return;
-  if (!hasASR) { showTextMode(); return; }
-
-  let finalText = '';
-  const rec = new SR();
-  rec.lang = 'id-ID';        // understands Indonesian
-  rec.interimResults = true;
-  rec.continuous = false;
-  rec.maxAlternatives = 1;
-
-  rec.onstart = () => { setState(STATES.LISTENING); finalText = ''; };
-  rec.onresult = e => {
-    let interim = '';
-    finalText = '';
-    for (const r of e.results) {
-      if (r.isFinal) finalText += r[0].transcript;
-      else interim += r[0].transcript;
-    }
-    $transcript.textContent = finalText || interim;
-  };
-  rec.onend = () => {
-    if (finalText.trim()) askJarvis(finalText.trim());
-    else setState(STATES.IDLE);
-  };
-  rec.onerror = e => {
-    if (e.error === 'not-allowed') { hasASR = false; showTextMode(); }
-    setState(STATES.IDLE);
-  };
-
-  try { rec.start(); }
-  catch { setState(STATES.IDLE); }
-}
-
-// ─── Text mode ────────────────────────────────────────────────────
-function showTextMode() {
-  textModeActive = true;
-  $textRow.style.display = 'flex';
-  $toggle.textContent = hasASR ? '🎙 Voice mode' : '';
-  $textInput.focus();
-}
-function hideTextMode() {
-  textModeActive = false;
-  $textRow.style.display = 'none';
-  $toggle.textContent = '⌨ Type instead';
-}
-
-function sendText() {
-  const msg = $textInput.value.trim();
-  if (!msg || state !== STATES.IDLE) return;
-  $textInput.value = '';
-  $textSend.disabled = true;
-  askJarvis(msg);
-}
-
-// ─── Events ───────────────────────────────────────────────────────
-$orb.addEventListener('click', startListening);
-$orb.addEventListener('touchend', e => { e.preventDefault(); startListening(); });
-
-$toggle.addEventListener('click', () => {
-  if (textModeActive) hideTextMode();
-  else showTextMode();
-});
-
-$textInput.addEventListener('input', () => {
-  $textSend.disabled = !$textInput.value.trim() || state !== STATES.IDLE;
-});
-$textInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') { e.preventDefault(); sendText(); }
-});
-$textSend.addEventListener('click', sendText);
-
-// ─── Init greeting ────────────────────────────────────────────────
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    if (!hasASR) showTextMode();
-    speak('Online and at your service, Sir.');
-  }, 800);
-});
-</script>
+<script src="game.js"></script>
 </body>
 </html>
