@@ -1,0 +1,18 @@
+{
+  "name": "ai-asset-factory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Asset Factory — PT Maha Karya Haluoleo internal asset production system. See docs/ai-asset-factory for planning/FSD/TDD.",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "pnpm -r --filter=./packages/* --filter=./apps/* build",
+    "dev:web": "pnpm --filter @aaf/web dev",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean"
+  }
+}
