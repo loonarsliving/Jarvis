@@ -1,0 +1,9 @@
+# infra/docker/Dockerfile.migrate — one-shot init container step (TDD §38)
+# that applies /infra/supabase/migrations before web/workers start. Kept as
+# its own tiny image (postgres client only, no Node) since it does one job.
+
+FROM postgres:16-alpine
+COPY infra/supabase/migrations /migrations
+COPY infra/supabase/run-migrations.sh /run-migrations.sh
+RUN chmod +x /run-migrations.sh
+ENTRYPOINT ["/run-migrations.sh"]

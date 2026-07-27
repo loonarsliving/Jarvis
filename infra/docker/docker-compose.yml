@@ -1,0 +1,186 @@
+# infra/docker/docker-compose.yml
+#
+# The entire system as one deployment unit (TDD §38): 5 app services +
+# self-hosted Supabase stack + Caddy. Run from the REPO ROOT so relative
+# build contexts resolve:
+#
+#   docker compose -f infra/docker/docker-compose.yml --env-file .env up -d --wait
+#
+# Migrations run as a one-shot init container (`migrate`) before web/workers
+# start (TDD §7.7/§38) — every other service `depends_on: migrate:
+# condition: service_completed_successfully`.
+
+include:
+  - ../supabase/docker-compose.supabase.yml
+
+services:
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks: [aaf-internal]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [aaf-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mission-dispatcher:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker-mission-dispatcher
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      WORKER_INSTANCE_ID: mission-dispatcher-1
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      HIGGSFIELD_API_KEY: ${HIGGSFIELD_API_KEY}
+      HIGGSFIELD_API_BASE_URL: ${HIGGSFIELD_API_BASE_URL}
+      RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-4}
+      RETRY_BACKOFF_BASE_MS: ${RETRY_BACKOFF_BASE_MS:-20000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [aaf-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  higgsfield-poller:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker-higgsfield-poller
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      WORKER_INSTANCE_ID: higgsfield-poller-1
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      HIGGSFIELD_API_KEY: ${HIGGSFIELD_API_KEY}
+      HIGGSFIELD_API_BASE_URL: ${HIGGSFIELD_API_BASE_URL}
+      HIGGSFIELD_TIMEOUT_MS: ${HIGGSFIELD_TIMEOUT_MS:-600000}
+      HIGGSFIELD_TRAINING_TIMEOUT_MS: ${HIGGSFIELD_TRAINING_TIMEOUT_MS:-2700000}
+      RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-4}
+      RETRY_BACKOFF_BASE_MS: ${RETRY_BACKOFF_BASE_MS:-20000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [aaf-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  drive-sync-worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker-drive-sync
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      WORKER_INSTANCE_ID: drive-sync-1
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON}
+      GOOGLE_DRIVE_ROOT_FOLDER_ID: ${GOOGLE_DRIVE_ROOT_FOLDER_ID}
+      RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-4}
+      RETRY_BACKOFF_BASE_MS: ${RETRY_BACKOFF_BASE_MS:-20000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - drive-sync-scratch:/tmp/aaf-scratch # TDD §32 ephemeral scratch storage
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [aaf-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  qc-worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker-qc
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      WORKER_INSTANCE_ID: qc-worker-1
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      RETRY_MAX_ATTEMPTS: ${RETRY_MAX_ATTEMPTS:-4}
+      RETRY_BACKOFF_BASE_MS: ${RETRY_BACKOFF_BASE_MS:-20000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [aaf-internal]
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  caddy:
+    image: caddy:2.9-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      AAF_DOMAIN: ${AAF_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+    networks: [aaf-internal]
+
+volumes:
+  drive-sync-scratch:
+  caddy-data:
+  caddy-config:
+
+networks:
+  aaf-internal:
+    name: aaf-internal

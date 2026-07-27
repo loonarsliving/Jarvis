@@ -1,0 +1,22 @@
+# infra/docker/Caddyfile — reverse proxy (TDD §00 stack decision, §26.3,
+# §39). Only Caddy binds to the host's 80/443; every other service is
+# internal-only on the Compose bridge network.
+#
+# {$AAF_DOMAIN} — set via env when you have a resolvable domain/DDNS for
+# automatic HTTPS (Caddy's built-in ACME support). For a purely LAN-internal
+# Mini PC deployment with no public DNS, replace the site block below with
+# `:80 { ... }` and terminate TLS with an internal CA per the operational
+# runbook (TDD §26.3) — left as a deployment-time choice, not hardcoded here.
+{$AAF_DOMAIN:localhost} {
+	reverse_proxy web:3000
+
+	encode gzip
+
+	header {
+		# Baseline hardening — internal enterprise system, not exempt from
+		# defensive headers just because it's not public-facing (TDD §26.1).
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+	}
+}

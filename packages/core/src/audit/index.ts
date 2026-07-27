@@ -12,9 +12,12 @@ export {
 } from "./types.js";
 
 export class AuditWriteError extends Error {
-  constructor(message: string, public readonly cause?: unknown) {
+  public readonly auditCause?: unknown;
+
+  constructor(message: string, cause?: unknown) {
     super(message);
     this.name = "AuditWriteError";
+    this.auditCause = cause;
   }
 }
 

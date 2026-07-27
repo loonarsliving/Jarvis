@@ -1,0 +1,31 @@
+# infra/docker/Dockerfile.worker-mission-dispatcher — one image per service (TDD §39), not a
+# shared worker image with a mode flag. Build context MUST be the repo root
+# (see docker-compose.yml).
+
+FROM node:22-slim AS base
+RUN corepack enable
+WORKDIR /repo
+
+FROM base AS build
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY packages/config/package.json packages/config/package.json
+COPY packages/core/package.json packages/core/package.json
+COPY apps/worker-mission-dispatcher/package.json apps/worker-mission-dispatcher/package.json
+RUN pnpm install --frozen-lockfile --filter @aaf/worker-mission-dispatcher... 2>/dev/null || pnpm install --filter @aaf/worker-mission-dispatcher...
+COPY packages/config ./packages/config
+COPY packages/core ./packages/core
+COPY apps/worker-mission-dispatcher ./apps/worker-mission-dispatcher
+RUN pnpm --filter @aaf/core build && pnpm --filter @aaf/worker-mission-dispatcher build
+
+FROM base AS runtime
+ENV NODE_ENV=production
+WORKDIR /repo
+COPY --from=build /repo/pnpm-workspace.yaml /repo/package.json ./
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/packages ./packages
+COPY --from=build /repo/apps/worker-mission-dispatcher ./apps/worker-mission-dispatcher
+WORKDIR /repo/apps/worker-mission-dispatcher
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist/main.js"]

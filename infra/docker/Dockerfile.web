@@ -1,0 +1,37 @@
+# infra/docker/Dockerfile.web — Service 1 of 5 (TDD §2). Multi-stage build
+# per TDD §39: `build` stage has full devDependencies, `runtime` stage ships
+# only production node_modules + compiled output. node:22-slim (not Alpine,
+# per TDD §39 — avoids musl-libc edge cases with native deps later engines
+# may need, e.g. embedding/similarity scoring).
+#
+# Build context MUST be the repo root (see docker-compose.yml's `context: ../..`)
+# since this is a pnpm workspace and needs every workspace package's
+# package.json to resolve the lockfile deterministically.
+
+FROM node:22-slim AS base
+RUN corepack enable
+WORKDIR /repo
+
+FROM base AS build
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+COPY packages/config/package.json packages/config/package.json
+COPY packages/core/package.json packages/core/package.json
+COPY packages/ui/package.json packages/ui/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN pnpm install --frozen-lockfile --filter @aaf/web... 2>/dev/null || pnpm install --filter @aaf/web...
+COPY packages ./packages
+COPY apps/web ./apps/web
+RUN pnpm --filter @aaf/core build && pnpm --filter @aaf/web build
+
+FROM base AS runtime
+ENV NODE_ENV=production
+WORKDIR /repo
+COPY --from=build /repo/pnpm-workspace.yaml /repo/package.json ./
+COPY --from=build /repo/node_modules ./node_modules
+COPY --from=build /repo/packages ./packages
+COPY --from=build /repo/apps/web ./apps/web
+WORKDIR /repo/apps/web
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["pnpm", "start"]

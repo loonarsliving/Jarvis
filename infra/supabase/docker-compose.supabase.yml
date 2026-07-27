@@ -1,0 +1,118 @@
+# infra/supabase/docker-compose.supabase.yml
+#
+# Self-hosted Supabase overlay (TDD §00 stack decision, §38, §40.4) —
+# "the official Supabase Docker Compose distribution, vendored into
+# /infra/supabase and version-pinned (upgraded deliberately, tested in a
+# staging pass before production rollout, never auto-updated)."
+#
+# This file is a TRIMMED REFERENCE covering exactly the services TDD §40.2
+# names for the Mini PC deployment (supabase-db, supabase-auth,
+# supabase-rest, supabase-realtime, supabase-studio) plus Supavisor (TDD
+# §7.6's connection pooler, bundled in the real self-hosted stack). Before
+# going to production, replace this file with Supabase's actual official
+# compose export (`supabase init` / the self-hosted deployment guide) —
+# that upstream file additionally wires Kong (API gateway), Storage,
+# ImgProxy, and postgres-meta, none of which this system uses (Supabase
+# Storage is explicitly unused per Constitution Article II.2 / TDD §33 —
+# Google Drive is the asset store). Keeping this reference minimal avoids
+# this Sprint silently drifting from "deliberate, version-pinned" into
+# "whatever got copy-pasted."
+#
+# Networking: internal-only (TDD §26.3/§39) — no host port bindings here;
+# infra/docker/docker-compose.yml's `web` service is the only consumer, over
+# the shared `aaf-internal` network, and only Caddy binds to the host.
+
+services:
+  supabase-db:
+    image: supabase/postgres:15.8.1.040
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: postgres
+    volumes:
+      - supabase-db-data:/var/lib/postgresql/data
+    networks: [aaf-internal]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  supavisor:
+    image: supabase/supavisor:2.4.12
+    restart: unless-stopped
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@supabase-db:5432/postgres
+      SECRET_KEY_BASE: ${SUPAVISOR_SECRET_KEY_BASE:?required}
+      VAULT_ENC_KEY: ${SUPAVISOR_VAULT_ENC_KEY:?required}
+    networks: [aaf-internal]
+    # Transaction-mode pooler (TDD §7.6) — app services connect through this,
+    # never directly to supabase-db, to avoid exhausting Postgres's native
+    # max_connections on Mini PC-class hardware.
+
+  supabase-auth:
+    image: supabase/gotrue:v2.167.0
+    restart: unless-stopped
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@supabase-db:5432/postgres
+      GOTRUE_SITE_URL: ${AAF_SITE_URL:-http://localhost:3000}
+      GOTRUE_DISABLE_SIGNUP: "true" # TDD §27: no self-registration flow.
+      GOTRUE_JWT_SECRET: ${SUPABASE_JWT_SECRET:?required}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_MAILER_AUTOCONFIRM: "true" # accounts are provisioned by a Super Admin (TDD §27), not via email confirmation flows.
+    networks: [aaf-internal]
+
+  supabase-rest:
+    image: postgrest/postgrest:v12.2.8
+    restart: unless-stopped
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgresql://postgres:${POSTGRES_PASSWORD}@supabase-db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET:?required}
+    networks: [aaf-internal]
+
+  supabase-realtime:
+    image: supabase/realtime:v2.34.7
+    restart: unless-stopped
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      DB_HOST: supabase-db
+      DB_PORT: "5432"
+      DB_NAME: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${SUPABASE_JWT_SECRET:?required}
+    networks: [aaf-internal]
+    # Used minimally/optionally per TDD §40.2 — in-app notification live-push
+    # if Agent 7's notifications module ever adopts it over polling.
+
+  supabase-studio:
+    image: supabase/studio:20241202-71e5240
+    restart: unless-stopped
+    environment:
+      SUPABASE_URL: http://supabase-rest:3000
+      STUDIO_PG_META_URL: http://supabase-db:5432
+    networks: [aaf-internal]
+    # Admin-only DB browser (TDD §40.2) — bound to localhost/VPN only, never
+    # public. Deliberately no `ports:` mapping here; expose via an SSH tunnel
+    # or a VPN-only Caddy site block in the operational runbook, not a
+    # default open port.
+
+volumes:
+  supabase-db-data:
+
+# `aaf-internal` is declared once, in infra/docker/docker-compose.yml (the
+# file that `include`s this one) — Compose merges included files' top-level
+# `networks:` keys, so no second declaration is needed (or safe: a mismatched
+# `external:` flag between the two would conflict).
