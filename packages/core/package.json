@@ -18,6 +18,8 @@
     "./product-lock": "./dist/product-lock/index.js",
     "./character-lock": "./dist/character-lock/index.js",
     "./higgsfield": "./dist/higgsfield/index.js",
+    "./render-provider": "./dist/render-provider/index.js",
+    "./retry": "./dist/retry/index.js",
     "./drive": "./dist/drive/index.js",
     "./qc": "./dist/qc/index.js",
     "./mission": "./dist/mission/index.js",
