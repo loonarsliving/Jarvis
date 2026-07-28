@@ -22,12 +22,13 @@ into internally by another module's owner.
 | `qc/` | Agent 6 (Quality Intelligence) | Stub |
 | `mission/` | Agent 2 (Mission Engine) | Stub |
 | `queue/` | Agent 2 (Mission Engine) — shared primitive, consumed by Agents 4/5/6 | Stub |
-| `notifications/` | Agent 7 (Dashboard & Analytics) | Stub |
+| `notifications/` | Agent 7 (Dashboard & Analytics) | **Implemented** — Notification Engine, FSD §21 |
+| `analytics/` | Agent 7 (Dashboard & Analytics) | **Implemented** — Analytics Engine, TDD §22. Not in TDD §3's original module list — added per the same documented-ambiguity pattern as `rbac`/`result` (root `DECISIONS.md` items 2-3); see `DECISIONS-agent7.md` item 2 |
 
-Each stub folder contains its own `README.md` restating its owner and a
-placeholder `index.ts` that exports nothing yet (so the package builds
-cleanly) — this is intentional per Article VIII ("Foundation... never
-touches any business-logic module").
+Each remaining stub folder contains its own `README.md` restating its owner
+and a placeholder `index.ts` that exports nothing yet (so the package
+builds cleanly) — this is intentional per Article VIII ("Foundation...
+never touches any business-logic module").
 
 ## Import boundaries
 

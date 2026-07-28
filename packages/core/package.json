@@ -22,7 +22,8 @@
     "./qc": "./dist/qc/index.js",
     "./mission": "./dist/mission/index.js",
     "./queue": "./dist/queue/index.js",
-    "./notifications": "./dist/notifications/index.js"
+    "./notifications": "./dist/notifications/index.js",
+    "./analytics": "./dist/analytics/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
