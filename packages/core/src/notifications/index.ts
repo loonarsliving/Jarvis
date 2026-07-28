@@ -1,6 +1,13 @@
 /**
- * Stub module — owner: Agent 7 (Dashboard & Analytics) (see README.md).
- * Agent 1 (Foundation) intentionally leaves this empty per Engineering
- * Constitution Article VIII ("never touches any business-logic module").
+ * Notification Engine (FSD §21) — public interface. Owner: Agent 7
+ * (Dashboard & Analytics). Replaces the Agent 1-scaffolded stub (see
+ * README.md) now that this agent's Sprint implements it.
  */
-export {};
+export * from "./types.js";
+export {
+  listNotifications,
+  getUnreadNotificationCount,
+  markNotificationRead,
+  createNotification,
+  buildCriticalEventNotificationHandler,
+} from "./repository.js";
